@@ -17,10 +17,10 @@ int main()
 	puts("Hello World via LIBC");
 
 	// Using the LINIX/UNIX system call:
-  char   str0[] = "Hello World via SysCall (0)\n";
+//char   str0[] = "Hello World via SysCall (0)\n";
+//const char* str1   = "Hello World via SysCall (1)\n";
 
   constexpr char const* const str1   = "Hello World via SysCall (1)\n";
-//const char* str1   = "Hello World via SysCall (1)\n";
 
 	constexpr size_t len   = strlen(str1);
 	write(1, str1, len);
