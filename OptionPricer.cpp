@@ -1,31 +1,41 @@
-// vim:ts=2:et
-//===========================================================================//
-//                            "OptionPricer.cpp":                            //
-//                   Command-Line Option Price Calculator                    //
-//===========================================================================//
 #include "BSM.h"
 #include <iostream>
-#include <cstdlib>
+#include <boost/program_options.hpp>
 
-using namespace std;
+namespace po = boost::program_options;
 
 int main(int argc, char* argv[])
 {
-  // We must have argc==8: path to this executable + 7 BSM params:
-  if (argc != 8)
-  {
-    cerr << "REQUIRED PARAMS: K T r D sigma t St" << endl;
-    return 1;     // Return an error code by convention
-  }
-  double K     = atof(argv[1]);
-  double T     = atof(argv[2]);
-  double r     = atof(argv[3]);
-  double D     = atof(argv[4]);
-  double sigma = atof(argv[5]);
-  double t     = atof(argv[6]);
-  double St    = atof(argv[7]);
+    po::options_description desc("Allowed options");
+    desc.add_options()
+        ("help", "produce help message")
+        ("K", po::value<double>(), "set K")
+        ("T", po::value<double>(), "set T")
+        ("r", po::value<double>(), "set r")
+        ("D", po::value<double>(), "set D")
+        ("sigma", po::value<double>(), "set sigma")
+        ("t", po::value<double>(), "set t")
+        ("St", po::value<double>(), "set St")
+    ;
 
-  double  callPx = BSM::CallPx(K, T, r, D, sigma, t, St);
-  cout << callPx << endl;
-  return 0;
+    po::variables_map vm;
+    po::store(po::parse_command_line(argc, argv, desc), vm);
+    po::notify(vm);    
+
+    if (vm.count("help")) {
+        std::cout << desc << "\n";
+        return 1;
+    }
+
+    double K     = vm["K"].as<double>();
+    double T     = vm["T"].as<double>();
+    double r     = vm["r"].as<double>();
+    double D     = vm["D"].as<double>();
+    double sigma = vm["sigma"].as<double>();
+    double t     = vm["t"].as<double>();
+    double St    = vm["St"].as<double>();
+
+    double callPx = BSM::CallPx(K, T, r, D, sigma, t, St);
+    std::cout << callPx << std::endl;
+    return 0;
 }

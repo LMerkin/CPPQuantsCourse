@@ -11,7 +11,7 @@ HelloWorld: HelloWorld.cpp
 	$(CXX) $(CXXFLAGS) -o $(VPATH)/$@ $<
 
 OptionPricer: OptionPricer.cpp BSM.o
-	$(CXX) $(CXXFLAGS) -o $(VPATH)/$@ OptionPricer.cpp $(VPATH)/BSM.o
+	$(CXX) $(CXXFLAGS) -o $(VPATH)/$@ OptionPricer.cpp $(VPATH)/BSM.o -lboost_program_options
 
 # Separate compilation of BSM.o:
 BSM.o: BSM.cpp BSM.h
