@@ -16,6 +16,7 @@ int main(int argc, char* argv[])
         ("sigma", po::value<double>(), "set sigma")
         ("t", po::value<double>(), "set t")
         ("St", po::value<double>(), "set St")
+        ("option", po::value<std::string>(), "set option type (CallPx, PutPx, BinaryCallPx, BinaryPutPx)")
     ;
 
     po::variables_map vm;
@@ -34,8 +35,22 @@ int main(int argc, char* argv[])
     double sigma = vm["sigma"].as<double>();
     double t     = vm["t"].as<double>();
     double St    = vm["St"].as<double>();
+    std::string option = vm["option"].as<std::string>();
 
-    double callPx = BSM::CallPx(K, T, r, D, sigma, t, St);
-    std::cout << callPx << std::endl;
+    double px = 0.0;
+    if (option == "CallPx") {
+        px = BSM::CallPx(K, T, r, D, sigma, t, St);
+    } else if (option == "PutPx") {
+        px = BSM::PutPx(K, T, r, D, sigma, t, St);
+    } else if (option == "BinaryCallPx") {
+        px = BSM::BinaryCallPx(K, T, r, D, sigma, t, St);
+    } else if (option == "BinaryPutPx") {
+        px = BSM::BinaryPutPx(K, T, r, D, sigma, t, St);
+    } else {
+        std::cerr << "Invalid option type. Must be one of: CallPx, PutPx, BinaryCallPx, BinaryPutPx" << std::endl;
+        return 1;
+    }
+
+    std::cout << px << std::endl;
     return 0;
 }
