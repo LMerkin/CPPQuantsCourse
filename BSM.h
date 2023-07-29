@@ -14,13 +14,27 @@
 namespace BSM
 {
   //-------------------------------------------------------------------------//
-  // "CallPx": Calculation of Call Option Px:                                //
+  // Option Payoff Types:                                                    //
   //-------------------------------------------------------------------------//
-  double CallPx
+  enum class PayoffType: int
+  {
+    UNDEFINED   = 0,
+    Call        = 1,
+    Put         = 2,
+    DigitalCall = 3,
+    DigitalPut  = 4,
+    Arbitrary   = 100
+  };
+
+  //-------------------------------------------------------------------------//
+  // "Px": Calculation of Option Px:                                         //
+  //-------------------------------------------------------------------------//
+  double Px
   (
     // Option Spec:
-    double a_K,     // Option Strike
-    double a_T,     // Opton Expiration Time, as Year Fraction, e.g. 2023.xxx
+    PayoffType a_type,
+    double     a_K, // Option Strike
+    double     a_T, // Opton Expiration Time, as Year Fraction, e.g. 2023.xxx
     // Market Data:
     double a_r,     // Risk-Free Interest Rate (for the Numeraire Ccy)
     double a_D,     // Dividend Rate (Risk-Free Ineterst Rate for Foreign Ccy)
