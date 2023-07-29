@@ -13,7 +13,7 @@ This will compile the source code and generate the OptionPricer executable.
 You can run the OptionPricer program with command line arguments to specify the parameters for the option pricing model. Here's an example:
 
 ```bash
-./OptionPricer --K=100 --T=2023.9 --r=0.05 --D=0.02 --sigma=0.25 --t=2023.6 --St=100 --option=CallPx
+./__BUILD__/OptionPricer --K=100 --T=2023.9 --r=0.05 --D=0.02 --sigma=0.25 --t=2023.6 --St=100 --option=1
 ```
 In this example:
 
