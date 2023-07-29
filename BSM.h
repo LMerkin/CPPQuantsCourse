@@ -38,10 +38,10 @@ namespace BSM
       double a_D,     // Dividend Rate (Risk-Free Ineterst Rate for Foreign Ccy)
       double a_sigma, // Implied Volatility
       // "Quick" variables:
-      double a_t, // Pricing Time (as Year Fraction)
-      double a_St // Underlying Px at Time "a_t"
+      double a_t,  // Pricing Time (as Year Fraction)
+      double a_St, // Underlying Px at Time "a_t"
+      double a_Pr  // Fixed premium for digital options
   );
-
   //-------------------------------------------------------------------------//
   // "Phi": Standard Normal CDF:                                             //
   //-------------------------------------------------------------------------//

@@ -1,6 +1,7 @@
 CXX = g++
-OPT = -Ofast -march=native -mtune=native
-CXXFLAGS = -Wall -std=c++11
+OPT = -march=native -mtune=native
+#OPT = -Ofast -march=native -mtune=native
+CXXFLAGS = -Wall -std=c++17
 
 VPATH = __BUILD__
 

@@ -14,7 +14,7 @@ namespace BSM
   // "CallPx":                                                               //
   //-------------------------------------------------------------------------//
   double CallPx(
-      // Option Spec:
+      // Common option Spec:
       PayoffType a_type, // Type of option
       double a_K,        // Option Strike
       double a_T,        // Opton Expiration Time, as Year Fraction, e.g. 2023.xxx
@@ -23,8 +23,10 @@ namespace BSM
       double a_D,     // Dividend Rate (Risk-Free Ineterst Rate for Foreign Ccy)
       double a_sigma, // Implied Volatility
       // "Quick" variables:
-      double a_t, // Pricing Time (as Year Fraction)
-      double a_St // Underlying Px at Time "a_t"
+      double a_t,  // Pricing Time (as Year Fraction)
+      double a_St, // Underlying Px at Time "a_t"
+      // Digital option Spec:
+      double a_Pr // Binary option premium
   )
   {
     // Time to expiration:
@@ -35,6 +37,11 @@ namespace BSM
 
     if (a_K <= 0.0 || a_St <= 0.0 || a_sigma <= 0.0)
       throw std::invalid_argument("Non-Positive Strike / UnderlyingPx / Vol");
+
+    if ((a_type == PayoffType::DigitalCall ||
+         a_type == PayoffType::DigitalPut) &&
+        std::isnan(a_Pr))
+      throw std::invalid_argument("For Digital Option premium undefined");
 
     // Generic Case
     double px = NAN;
@@ -62,11 +69,33 @@ namespace BSM
     case PayoffType::Put:
     {
       if (a_D == 0)
-        px = CallPx(PayoffType::Call, a_K, a_T, a_r, a_D, a_sigma, a_t, a_St) - a_St + a_K * exp(-a_r * tau);
+        px = CallPx(PayoffType::Call, a_K, a_T, a_r, a_D, a_sigma, a_t, a_St, a_Pr) - a_St + a_K * exp(-a_r * tau);
       else
         throw std::logic_error("Unsupported: Put with Dividends");
       break;
     }
+    case PayoffType::DigitalCall:
+    {
+      if (tau == 0.0)
+        // At expiration time, return the PayOff:
+        return a_St > a_K ? a_Pr : 0.0;
+
+      double x = log(a_St / a_K);
+      double s = a_sigma * sqrt(tau);
+      double d1 = (x + (a_r - a_D + 0.5 * a_sigma * a_sigma) * tau) / s;
+      double d2 = d1 - s;
+      // double phi1 = Phi(d1);
+      double phi2 = Phi(d2);
+
+      px = exp(-a_r * tau) * phi2;
+      break;
+    }
+    case PayoffType::DigitalPut:
+      if (tau == 0.0)
+        // At expiration time, return the PayOff:
+        return a_St < a_K ? a_Pr : 0.0;
+      px = exp(-a_r * tau) - CallPx(PayoffType::DigitalCall, a_K, a_T, a_r, a_D, a_sigma, a_t, a_St, a_Pr);
+      break;
     default:
     {
       throw std::logic_error("Unsupported PayoffType");
