@@ -13,53 +13,21 @@
 
 namespace BSM
 {
-  //-------------------------------------------------------------------------//
-  // "CallPx": Calculation of Call Option Px:                                //
-  //-------------------------------------------------------------------------//
-  double CallPx
-  (
-    double a_K,     
-    double a_T,     
-    double a_r,     
-    double a_D,     
-    double a_sigma, 
-    double a_t,     
-    double a_St     
-  );
+  enum class OptionType {
+    Undifined  = 0,
+    Call       = 1,
+    Put        = 2,
+    BinaryCall = 3,
+    BinaryPut  = 4,
+    Any        = 100
+  };
 
   //-------------------------------------------------------------------------//
-  // "PutPx": Calculation of Put Option Px:                                  //
+  // "PriceOption": Calculation of Option Px based on the option type:       //
   //-------------------------------------------------------------------------//
-  double PutPx
+  double PriceOption
   (
-    double a_K,     
-    double a_T,     
-    double a_r,     
-    double a_D,     
-    double a_sigma, 
-    double a_t,     
-    double a_St     
-  );
-
-  //-------------------------------------------------------------------------//
-  // "BinaryCallPx": Calculation of Binary Call Option Px:                   //
-  //-------------------------------------------------------------------------//
-  double BinaryCallPx
-  (
-    double a_K,     
-    double a_T,     
-    double a_r,     
-    double a_D,     
-    double a_sigma, 
-    double a_t,     
-    double a_St     
-  );
-
-  //-------------------------------------------------------------------------//
-  // "BinaryPutPx": Calculation of Binary Put Option Px:                     //
-  //-------------------------------------------------------------------------//
-  double BinaryPutPx
-  (
+    OptionType optionType,
     double a_K,     
     double a_T,     
     double a_r,     

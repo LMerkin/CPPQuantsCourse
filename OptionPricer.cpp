@@ -16,7 +16,7 @@ int main(int argc, char* argv[])
         ("sigma", po::value<double>(), "set sigma")
         ("t", po::value<double>(), "set t")
         ("St", po::value<double>(), "set St")
-        ("option", po::value<std::string>(), "set option type (CallPx, PutPx, BinaryCallPx, BinaryPutPx)")
+        ("option", po::value<int>(), "set option type (1: Call, 2: Put, 3: BinaryCall, 4: BinaryPut)")
     ;
 
     po::variables_map vm;
@@ -35,22 +35,14 @@ int main(int argc, char* argv[])
     double sigma = vm["sigma"].as<double>();
     double t     = vm["t"].as<double>();
     double St    = vm["St"].as<double>();
-    std::string option = vm["option"].as<std::string>();
+    BSM::OptionType optionType = static_cast<BSM::OptionType>(vm["option"].as<int>());
 
-    double px = 0.0;
-    if (option == "CallPx") {
-        px = BSM::CallPx(K, T, r, D, sigma, t, St);
-    } else if (option == "PutPx") {
-        px = BSM::PutPx(K, T, r, D, sigma, t, St);
-    } else if (option == "BinaryCallPx") {
-        px = BSM::BinaryCallPx(K, T, r, D, sigma, t, St);
-    } else if (option == "BinaryPutPx") {
-        px = BSM::BinaryPutPx(K, T, r, D, sigma, t, St);
-    } else {
-        std::cerr << "Invalid option type. Must be one of: CallPx, PutPx, BinaryCallPx, BinaryPutPx" << std::endl;
+    if(optionType < BSM::OptionType::Call || optionType > BSM::OptionType::BinaryPut) {
+        std::cerr << "Invalid option type. Must be one of: 1 (Call), 2 (Put), 3 (BinaryCall), 4 (BinaryPut)" << std::endl;
         return 1;
     }
 
+    double px = BSM::PriceOption(optionType, K, T, r, D, sigma, t, St);
     std::cout << px << std::endl;
     return 0;
 }
