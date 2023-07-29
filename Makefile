@@ -4,11 +4,13 @@ CXXFLAGS = -Wall  -std=c++20
 
 VPATH = __BUILD__
 
-all: HelloWorld OptionPricer
+all: HelloWorld OptionPricer HTTPClient1
 
 # HelloWorld executable depends directly on HelloWorld.cpp:
 HelloWorld: HelloWorld.cpp
-	# Building HelloWorld...
+	$(CXX) $(OPT) $(CXXFLAGS) -o $(VPATH)/$@ $<
+
+HTTPClient1: HTTPClient1.cpp
 	$(CXX) $(OPT) $(CXXFLAGS) -o $(VPATH)/$@ $<
 
 OptionPricer: OptionPricer.cpp BSM.o
