@@ -11,9 +11,9 @@
 namespace BSM
 {
   //-------------------------------------------------------------------------//
-  // "CallPx":                                                               //
+  // "Px":                                                               //
   //-------------------------------------------------------------------------//
-  double CallPx(
+  double Px(
       // Common option Spec:
       PayoffType a_type, // Type of option
       double a_K,        // Option Strike
@@ -68,10 +68,36 @@ namespace BSM
     }
     case PayoffType::Put:
     {
-      if (a_D == 0)
-        px = CallPx(PayoffType::Call, a_K, a_T, a_r, a_D, a_sigma, a_t, a_St, a_Pr) - a_St + a_K * exp(-a_r * tau);
-      else
-        throw std::logic_error("Unsupported: Put with Dividends");
+
+      // if (a_D == 0)
+      //   px = Px(PayoffType::Call, a_K, a_T, a_r, a_D, a_sigma, a_t, a_St, a_Pr) -
+      //        a_St +
+      //        a_K * exp(-a_r * tau);
+      // else
+      //   throw std::logic_error("Unsupported: Put with Dividends");
+
+      // With replication portfolio principle
+      px = Px(PayoffType::Call, a_K, a_T, a_r, a_D, a_sigma, a_t, a_St, a_Pr) -
+           a_St * exp(-a_D * tau) +
+           a_K * exp(-a_r * tau);
+
+      // With formulas
+      if (tau == 0)
+        // At expiration time, return the Payoff:
+        return std::max(a_K - a_St, 0.0);
+
+      double x = log(a_St / a_K);
+      double s = a_sigma * sqrt(tau);
+      double d1 = (x + (a_r - a_D + 0.5 * a_sigma * a_sigma) * tau) / s;
+      double d2 = d1 - s;
+      double phi1 = Phi(-d1);
+      double phi2 = Phi(-d2);
+
+      double px_alt = -a_St * exp(-a_D * tau) * phi1 +
+                      a_K * exp(-a_r * tau) * phi2;
+      // Let's check results
+      assert(std::round(px) == std::round(px_alt));
+
       break;
     }
     case PayoffType::DigitalCall:
@@ -84,7 +110,6 @@ namespace BSM
       double s = a_sigma * sqrt(tau);
       double d1 = (x + (a_r - a_D + 0.5 * a_sigma * a_sigma) * tau) / s;
       double d2 = d1 - s;
-      // double phi1 = Phi(d1);
       double phi2 = Phi(d2);
 
       px = exp(-a_r * tau) * phi2;
@@ -94,7 +119,7 @@ namespace BSM
       if (tau == 0.0)
         // At expiration time, return the PayOff:
         return a_St < a_K ? a_Pr : 0.0;
-      px = exp(-a_r * tau) - CallPx(PayoffType::DigitalCall, a_K, a_T, a_r, a_D, a_sigma, a_t, a_St, a_Pr);
+      px = exp(-a_r * tau) - Px(PayoffType::DigitalCall, a_K, a_T, a_r, a_D, a_sigma, a_t, a_St, a_Pr);
       break;
     default:
     {
@@ -107,6 +132,8 @@ namespace BSM
 
     return px;
   }
+
+  // PUT-CALL PARITY:
   // Call: max(S_T-K, 0)
   // Put: max(K-S_T, 0)
   // Call-Put: S_T < K: 0-(K-S_T)=S_T-K
@@ -119,8 +146,9 @@ namespace BSM
   // At t: CallPx(K,T;t) - PutPx(K,T;t)
   //
   // (2) Portfolio:
-  // Long Underlying,now: S_t,              ft T: S_T
-  // Money Account,  now: -K*exp(-r*(T-t)), ft T: -K
+  // Long Underlying,now: S_t,              at T: S_T
+  // Money Account,  now: -K*exp(-r*(T-t)), at T: -K
+  //
   // At T: S_T - K
   // At t: S_t - K*exp(-r*(T-t))
   //

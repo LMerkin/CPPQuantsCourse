@@ -23,12 +23,12 @@ namespace BSM
     Put = 2,
     DigitalCall = 3,
     DigitalPut = 4,
-    Arbitrary = 180,
+    Arbitrary = 180, // Payoff defined not over K but over smth func()
   };
   //-------------------------------------------------------------------------//
-  // "CallPx": Calculation of Call Option Px:                                //
+  // "Px": Calculation of Call Option Px:                                //
   //-------------------------------------------------------------------------//
-  double CallPx(
+  double Px(
       // Option Spec:
       PayoffType a_type, // Type of option
       double a_K,        // Option Strike

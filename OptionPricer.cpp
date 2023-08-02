@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
       return 5;
     }
 
-    double callPx = BSM::CallPx(BSM::PayoffType(poType), K, T, r, D, sigma, t, St, Pr);
+    double callPx = BSM::Px(BSM::PayoffType(poType), K, T, r, D, sigma, t, St, Pr);
     cout << callPx << endl;
     return 0;
   }
