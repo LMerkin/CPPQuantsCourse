@@ -41,7 +41,7 @@ namespace BSM
     if ((a_type == PayoffType::DigitalCall ||
          a_type == PayoffType::DigitalPut) &&
         std::isnan(a_Pr))
-      throw std::invalid_argument("For Digital Option premium undefined");
+      throw std::invalid_argument("Digital Option premium undefined is undefined");
 
     // Generic Case
     double px = NAN;

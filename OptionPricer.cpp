@@ -23,6 +23,7 @@ int main(int argc, char *argv[])
                                  "[-t current time]"
                                  "[-S St, Current underlying Px]"
                                  "[-P Pr, Fixed premium (for binay option only)]";
+
     int poType = 0;
     double K = NAN;
     double T = NAN;
@@ -42,59 +43,59 @@ int main(int argc, char *argv[])
       {
       case 'p':
         poType = (atoi(optarg) > 0) ? atoi(optarg) : 0;
-        // printf("Read PayoffType: '%d'\n", poType);
+        // cout << "Read PayoffType: " << poType << endl;
         break;
       case 'K':
         K = (atof(optarg) > 0) ? atof(optarg) : 0;
-        // printf("Read strike Px: '%f'\n", K);
+        // cout << "Read strike Px: " << K << endl;
         break;
       case 'T':
         T = (atof(optarg) > 0) ? atof(optarg) : 0;
-        // printf("Read expiration time: '%f'\n", T);
+        // cout << "Read expiration time: " << T << endl;
         break;
       case 'r':
         r = (atof(optarg) > 0) ? atof(optarg) : 0;
-        // printf("Read free interest rate: '%f'\n", r);
+        // cout << "Read free interest rate: " << r << endl;
         break;
       case 'D':
         D = (atof(optarg) > 0) ? atof(optarg) : 0;
-        // printf("Read divident rate: '%f'\n", D);
+        // cout << "Read divident rate: " << D << endl;
         break;
       case 's':
         sigma = (atof(optarg) > 0) ? atof(optarg) : 0;
-        // printf("Read sigma: '%f'\n", sigma);
+        // cout << "Read sigma: " << sigma << endl;
         break;
       case 't':
         t = (atof(optarg) > 0) ? atof(optarg) : 0;
-        // printf("Current time: %f\n", t);
+        // cout << "Current time: " << t << endl;
         break;
       case 'S':
         St = (atof(optarg) > 0) ? atof(optarg) : 0;
-        // printf("Current Px underlying in time t: %f\n", St);
+        // cout << "Current Px underlying in time t: " << St << endl;
         break;
       case 'P':
         Pr = (atof(optarg) > 0) ? atof(optarg) : 0;
-        // printf("Read fixed premium for digital option only: %f\n", Pr);
+        // cout << "Read fixed premium for digital option only: " << Pr << endl;
         break;
       case ':':
-        fprintf(stderr, "Missing argument value. Option [%c] need a value\n", optopt);
+        cerr << "Missing argument value. Option -" << static_cast<char>(optopt) << " need a value" << endl;
         exit(EXIT_FAILURE);
       case '?':
-        printf("Unknown argument [%c]\n", optopt);
-        printf("Usage: %s %s\n", argv[0], help_str);
+        cerr << "Unknown argument " << static_cast<char>(optopt) << endl;
+        cerr << "Usage: " << argv[0] << " " << help_str << endl;
         exit(EXIT_FAILURE);
       default:
-        printf("Parsing arguments...something went wrong...'%s'\n", optarg);
-        printf("Usage: %s %s\n", argv[0], help_str);
+        cerr << "Parsing arguments...something went wrong..." << optarg << endl;
+        cerr << "Usage: " << argv[0] << " " << help_str << endl;
         exit(EXIT_FAILURE);
       }
     }
     if (optind < argc)
     {
-      printf("non-option ARGV-elements: ");
+      cout << "non-option ARGV-elements: " << endl;
       while (optind < argc)
-        printf("%s ", argv[optind++]);
-      printf("\n");
+        cout << argv[optind++] << " " << endl;
+      cout << endl;
       return 5;
     }
 
