@@ -29,19 +29,32 @@ namespace BSM
       double a_Pr // Binary option premium
   )
   {
+
+    if (std::isnan(a_T) || std::isnan(a_t))
+      throw std::invalid_argument("Current time and expiration time must be defined");
+
     // Time to expiration:
     double tau = a_T - a_t;
 
     if (tau < 0.0)
       throw std::invalid_argument("Negative Time to Expiration");
 
+    if (std::isnan(a_K) ||
+        std::isnan(a_St) ||
+        std::isnan(a_sigma))
+      throw std::invalid_argument("Strike / UnderlyingPx / Vol must be defined");
+
     if (a_K <= 0.0 || a_St <= 0.0 || a_sigma <= 0.0)
       throw std::invalid_argument("Non-Positive Strike / UnderlyingPx / Vol");
 
-    if ((a_type == PayoffType::DigitalCall ||
-         a_type == PayoffType::DigitalPut) &&
-        std::isnan(a_Pr))
-      throw std::invalid_argument("Digital Option premium undefined is undefined");
+    if (a_type == PayoffType::DigitalCall ||
+        a_type == PayoffType::DigitalPut)
+    {
+      if (a_Pr <= 0.0)
+        throw std::invalid_argument("Non-Positive Digital Option premium");
+      if (std::isnan(a_Pr))
+        throw std::invalid_argument("Digital Option premium is undefined");
+    }
 
     // Generic Case
     double px = NAN;
