@@ -1,6 +1,6 @@
 // vim:ts=2:et
 //===========================================================================//
-//                                "ProcessHTTPReqs.c":                       //
+//                              "ProcessHTTPReqs.cpp":                       //
 //        Processing HTTP Requests in an Established Client Connection       //
 //===========================================================================//
 #include "ProcessHTTPReqs.h"
@@ -79,6 +79,7 @@ int ProcessHTTPReqs(int a_sd)
       goto NextReq;
     }
     // 0-terminate the 1st line:
+    // FIXME:
     char*  lineEnd =  strstr(reqBuff, "\r\n");
     assert(lineEnd != NULL);
     *lineEnd = '\0';
@@ -86,10 +87,10 @@ int ProcessHTTPReqs(int a_sd)
     // Find Path: It must begin with a '/', with ' ' afterwards:
     // Start with (reqBuff+4), ie skip "GET " which we checked is there:
     char* path    = strchr(reqBuff + 4,   '/');
-    char* pathEnd = (path == NULL) ? NULL : strchr(path, ' ');
+    char* pathEnd = (path == nullptr) ? nullptr : strchr(path, ' ');
 
     // 0-terminate path:
-    if (pathEnd == NULL)
+    if (pathEnd == nullptr)
     {
       fprintf(stderr,  "INFO: SD=%d: Missing Path: %s\n", a_sd, reqBuff);
       // Send the 501 error to the client:
@@ -98,7 +99,7 @@ int ProcessHTTPReqs(int a_sd)
       goto NextReq;
     }
     // OK, got a valid and framed path:
-    assert(path != NULL);
+    assert(path != nullptr);
     *pathEnd = '\0';
 
     // Check the HTTP version (beyond pathEnd):
@@ -140,6 +141,8 @@ int ProcessHTTPReqs(int a_sd)
       goto NextReq;
     }
     // Got Path and KeepAlive params!
+ 
+    /*
     // FIXME: Security considerations are very weak here!
     assert(*path == '/');
     // Prepend path with '.' to make it relative to the current working
@@ -165,6 +168,9 @@ int ProcessHTTPReqs(int a_sd)
     }
     // Get the file size:
     size_t fileSize = statBuff.st_size;
+    */
+    // TODO:
+    // FORM THE RESPONSE
 
     // Response to the client:
     sprintf(sendBuff,
@@ -176,10 +182,7 @@ int ProcessHTTPReqs(int a_sd)
       keepAlive ? "Keep-Alive" : "Close");
 
     // Read the file in chunks and send it to the client:
-    while (1)
-    {
-      int chunkSize = read(fd,  sendBuff, sizeof(sendBuff));
-      rc = send(a_sd, sendBuff, chunkSize, 0);
+    rc = send(a_sd, sendBuff, chunkSize, 0);
 
       // rc <  0: network error;
       // rc == 0: client SWAMPED by our data;
@@ -192,6 +195,11 @@ int ProcessHTTPReqs(int a_sd)
         close(a_sd);
         return rc;
       }
+    /*
+    while (1)
+    {
+      int chunkSize = read(fd,  sendBuff, sizeof(sendBuff));
+
       // Exit normally if got to the end of file (or file reading error):
       if (chunkSize < sizeof(sendBuff))
       {
@@ -199,6 +207,7 @@ int ProcessHTTPReqs(int a_sd)
         break;
       }
     }
+    */
     // Done with this Req:
   NextReq:
     if (!keepAlive)

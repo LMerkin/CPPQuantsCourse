@@ -39,7 +39,7 @@ int main(int argc, char* argv[])
       std::cerr << "ERROR: accept failed: " << strerror(errno) << std::endl;
       return 1;
     }
-    // XXX: Clients are services SEQUNTIALLY. If the currently-connected client
+    // XXX: Clients are serviced SEQUNTIALLY. If the currently-connected client
     // sends multiple reqs, all other clients will be locked out until this one
     // disconnects:
     (void) ProcessHTTPReqs(sd1);
