@@ -9,57 +9,83 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <stdexcept>
 
 namespace Net
 {
-	//=========================================================================//
-	// "TCP_Acceptor::Run":																										 //
-	//=========================================================================//
-	template<typename ProtoDialogue>
+  //=========================================================================//
+  // "TCP_Acceptor::Run":                                                    //
+  //=========================================================================//
+  template<typename ProtoDialogue>
   void TCP_Acceptor::Run(ProtoDialogue& a_proto)
-	{
-  	while (true)
-  	{
-			//---------------------------------------------------------------------//
-    	// Accept a connection, create a data exchange socket:                 //
-    	//---------------------------------------------------------------------//
-    	int sd1 = accept(m_acceptorSD, nullptr, nullptr);
-	    if (sd1 < 0)
-  	  {
-    	  // Some error in "accept", but may be not really serious:
-      	if (errno == EINTR)
-        // "accept" was interrupted by a signal, this is OK, just continue:
-        continue;
+  {
+    while (!s_exitRun)
+    {
+      //---------------------------------------------------------------------//
+      // Accept a connection, create a data exchange socket:                 //
+      //---------------------------------------------------------------------//
+      int sd1 = accept(m_acceptorSD, nullptr, nullptr);
+      if (sd1 < 0)
+      {
+        // Some error in "accept", but may be not really serious:
+        if (errno == EINTR)
+          // "accept" was interrupted by a signal, this is OK, just continue:
+          continue;
 
-	      // Any other error:
-	      throw std::runtime_error
-      			  ("ERROR: TCP_Acceptor::Run: accept failed: " +
-							 std::string(strerror(errno)));
-			}
-			//---------------------------------------------------------------------//
-			// Accept Successful:																									 //
-			//---------------------------------------------------------------------//
-			try
-			{
-				switch (m_cmodel)
-				{
-				case EConcurModel::Sequential:
-		    	// XXX: Clients are serviced SEQUNTIALLY. If the currently-connected
-		    	// client sends multiple reqs, all other clients will be locked out
-		    	// until this one disconnects:
-    			a_proto(sd1);
-					break;
+        // Any other error:
+        throw std::runtime_error
+              ("ERROR: TCP_Acceptor::Run: accept failed: " +
+               std::string(strerror(errno)));
+      }
+      //---------------------------------------------------------------------//
+      // Accept Successful:                                                  //
+      //---------------------------------------------------------------------//
+      switch (m_cmodel)
+      {
+      case EConcurModel::Sequential:
+        // XXX: Clients are serviced SEQUNTIALLY. If the currently-connected
+        // client sends multiple reqs, all other clients will be locked out
+        // until this one disconnects:
+        try
+        {
+          // Run the ProtoDialogue:
+          a_proto(sd1);
+          (void) close(sd1);
+        }
+        catch (std::exception const& exn)
+        {
+          std::cerr << "EXCEPTION in Acceptor Loop: " << exn.what()
+                    << std::endl;
+        }
+        catch (...) {}  // Other exceptions are silently ignored...
+        break;
 
-				default:
-					throw std::logic_error("ERROR: Unimplemented Concurrency Model");
-				}
-			}
-			catch (std::exception const& exn)
-			{
-				std::cerr << "EXCEPTION in Acceptor Loop: " << exn.what() << std::endl;
-			}
-		}
-	}
+      case EConcurModel::Fork:
+        if (fork() == 0)
+        {
+          // It is a CHILD process:
+          try
+          {
+            // Run the ProtoDialogue:
+            a_proto(sd1);
+            (void) close(sd1);
+            exit(0);    // Successful completion of the child
+          }
+          catch (...)
+          {
+            (void) close(sd1);
+            exit(1);    // Child terminated with error
+          }
+        }
+        // If we got here, it is the PARENT process. Continue as usual:
+        break;
+
+      default:
+        throw std::logic_error("ERROR: Unimplemented Concurrency Model");
+      }
+    }
+    // This point is unreachable
+  }
 }
 // End namespace Net

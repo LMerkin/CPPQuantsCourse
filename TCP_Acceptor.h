@@ -27,8 +27,9 @@ namespace Net
     //-----------------------------------------------------------------------//
     // Data Flds:                                                            //
     //-----------------------------------------------------------------------//
-    int          m_acceptorSD; // Acceptor Socket Descriprtor
-    EConcurModel m_cmodel;
+    int          const m_acceptorSD; // Acceptor Socket Descriprtor
+    EConcurModel const m_cmodel;
+    static bool        s_exitRun;    // NB: "static", i.e. class-wide!
 
   public:
     //-----------------------------------------------------------------------//
@@ -66,6 +67,12 @@ namespace Net
     //
     template<typename ProtoDialogue>
     void Run(ProtoDialogue& a_proto);
+
+  private:
+    //-----------------------------------------------------------------------//
+    // Signal Handler:                                                       //
+    //-----------------------------------------------------------------------//
+    static void SigHandler(int a_signum);
   };
 }
 // End namespace Net

@@ -19,6 +19,8 @@
 #include <cassert>
 #include <stdexcept>
 #include <string>       // For std::string
+#include <csignal>
+#include <sys/wait.h>
 
 namespace Net
 {
@@ -64,7 +66,21 @@ namespace Net
     (void) listen(sd, 1024);
 
     // Setup successful: Memoise the socket created:
-    m_acceptorSD = sd;
+    const_cast<int&>(m_acceptorSD) = sd;
+
+    // Set up the signal handler:
+    // SIGINT, SIGQUIT, SIGTERM -- will terminate the acceptor loop gracefully;
+    // SIGCHILD                 -- will "wait" for the child terminated to avoid
+    //                             a zombie
+    // FIXME: Better use "sigaction":
+    if (signal(SIGINT,  SigHandler) == SIG_ERR ||
+        signal(SIGQUIT, SigHandler) == SIG_ERR ||
+        signal(SIGTERM, SigHandler) == SIG_ERR ||
+        signal(SIGCHLD, SigHandler) == SIG_ERR)
+    {
+      (void) close(m_acceptorSD);
+      throw std::runtime_error("ERROR: Cannot setup signal handlers");
+    }
   }
 
   //=========================================================================//
@@ -73,6 +89,8 @@ namespace Net
   // XXX: NOT THREAD-SAFE: Using "getopt":
   //
   TCP_Acceptor::TCP_Acceptor(int argc, char* argv[])
+  : m_acceptorSD(-1),
+    m_cmodel    (EConcurModel::Sequential)
   {
     char const*  acceptorIP = nullptr;
     int          port       = -1;
@@ -115,10 +133,8 @@ namespace Net
         break;
 
       default:
-        // OR JUST IGNORE UNUSED ARGS???
-        assert(0 <= optind && optind < argc);
-        throw
-          std::invalid_argument("Invalid option: " + std::string(argv[optind]));
+        // Just ignore unused args?
+        ;
       }
     }
     // Invoke the actual Ctor:
@@ -131,5 +147,29 @@ namespace Net
   TCP_Acceptor::~TCP_Acceptor()
   {
     (void) close(m_acceptorSD);
+  }
+
+  //=========================================================================//
+  // "SigHandler":                                                           //
+  //=========================================================================//
+  bool TCP_Acceptor::s_exitRun = false; // Statically iinitialise to false
+
+  void TCP_Acceptor::SigHandler(int a_signum)
+  {
+    switch (a_signum)
+    {
+    case SIGINT:
+    case SIGQUIT:
+    case SIGTERM:
+      s_exitRun = true;
+      break;
+
+    case SIGCHLD:
+      // TODO: Check and log the child's termination status:
+      (void) waitpid(-1, nullptr, 0);
+      break;
+
+    default: ;
+    }
   }
 }
