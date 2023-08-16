@@ -4,7 +4,7 @@
 //                         Common Setup for TCP Servers                      //
 //===========================================================================//
 #include "TCP_Acceptor.h"
-#include <cstring>      // For C-style low-level 0-terminated strings
+#include <cstring>          // For C-style low-level 0-terminated strings
 #include <cstdlib>
 #include <errno.h>
 #include <netdb.h>
@@ -18,9 +18,10 @@
 #include <unistd.h>
 #include <cassert>
 #include <stdexcept>
-#include <string>       // For std::string
+#include <string>           // For std::string
 #include <csignal>
 #include <sys/wait.h>
+#include <utxx/error.hpp>   // Using utxx for more convenient exceptions
 
 namespace Net
 {
@@ -29,19 +30,24 @@ namespace Net
   //=========================================================================//
   TCP_Acceptor::TCP_Acceptor
   (
-    int          a_port,
-    char const*  a_acceptor_ip,
-    EConcurModel a_cmodel
+    int             a_port,
+    spdlog::logger* a_logger,
+    char const*     a_acceptor_ip,
+    EConcurModel    a_cmodel
   )
   : m_acceptorSD(-1),            // Initially invalid
-    m_cmodel    (a_cmodel)
+    m_cmodel    (a_cmodel),
+    m_logger    (a_logger)
   {
+    assert(m_logger != nullptr);
+
     // Create the acceptor socket (NOT for data interchange!)
     int sd = socket(AF_INET, SOCK_STREAM, 0);  // Default protocol: TCP
     if (sd < 0)
-      throw std::runtime_error
-            ("ERROR: Cannot create acceptor socket: " +
-             std::string(strerror(errno)));
+      // NB: Variable-arg ctor -- using a variadic template:
+      throw utxx::runtime_error
+            ("ERROR: Cannot create acceptor socket: errno=", errno, ": ",
+             strerror(errno));
 
     // Bind the socket to the given IP Address and Port:
     sockaddr_in sa;
@@ -57,10 +63,9 @@ namespace Net
     {
       int e =    errno;
       (void) close(sd);
-      throw std::runtime_error
-            ("ERROR: Cannot bind SD=" + std::to_string(sd) + " to IP=" +
-             std::string(inet_ntoa(sa.sin_addr))           + ", Port=" +
-             std::to_string(a_port)   + ": " + std::string(strerror(e)));
+      throw utxx::runtime_error
+            ("ERROR: Cannot bind SD=",  sd, " to IP=", inet_ntoa(sa.sin_addr),
+             ", Port=", a_port, ", errno=", e, ": ",   strerror(e));
     }
     // Create listen queue for 1024 clients:
     (void) listen(sd, 1024);
@@ -79,7 +84,7 @@ namespace Net
         signal(SIGCHLD, SigHandler) == SIG_ERR)
     {
       (void) close(m_acceptorSD);
-      throw std::runtime_error("ERROR: Cannot setup signal handlers");
+      throw utxx::runtime_error("ERROR: Cannot setup signal handlers");
     }
   }
 
@@ -88,10 +93,13 @@ namespace Net
   //=========================================================================//
   // XXX: NOT THREAD-SAFE: Using "getopt":
   //
-  TCP_Acceptor::TCP_Acceptor(int argc, char* argv[])
+  TCP_Acceptor::TCP_Acceptor(int argc, char* argv[], spdlog::logger* a_logger)
   : m_acceptorSD(-1),
-    m_cmodel    (EConcurModel::Sequential)
+    m_cmodel    (EConcurModel::Sequential),
+    m_logger    (a_logger)
   {
+    assert(m_logger != nullptr);
+
     char const*  acceptorIP = nullptr;
     int          port       = -1;
     EConcurModel cmodel     = EConcurModel::Sequential;
@@ -106,22 +114,7 @@ namespace Net
       {
       case 'c':
         // The actual arg is in "optarg":
-        cmodel =
-          (strcmp(optarg, "Sequential") == 0)
-          ? EConcurModel::Sequential
-          :
-          (strcmp(optarg, "Fork")   == 0)
-          ? EConcurModel::Fork
-          :
-          (strcmp(optarg, "Thread") == 0)
-          ? EConcurModel::Thread
-          :
-          (strcmp(optarg, "ThreadPool") == 0)
-          ? EConcurModel::ThreadPool
-          :
-          throw 
-            std::invalid_argument
-              ("Invalid EConcurModel: " + std::string(optarg));
+        cmodel     = EConcurModel::from_string(optarg);
         break;
 
       case 'i':
@@ -133,12 +126,12 @@ namespace Net
         break;
 
       default:
-        // Just ignore unused args?
+        // Ignore the unused arg:
         ;
       }
     }
     // Invoke the actual Ctor:
-    TCP_Acceptor(port, acceptorIP, cmodel);
+    TCP_Acceptor(port, a_logger, acceptorIP, cmodel);
   }
 
   //=========================================================================//
@@ -147,6 +140,7 @@ namespace Net
   TCP_Acceptor::~TCP_Acceptor()
   {
     (void) close(m_acceptorSD);
+    // DO NOT de-allocate the logger -- NOT OWNED!
   }
 
   //=========================================================================//

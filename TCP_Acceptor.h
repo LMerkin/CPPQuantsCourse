@@ -3,6 +3,13 @@
 //                               "TCP_Acceptor.h":                           //
 //===========================================================================//
 #pragma once
+#include <utxx/enum.hpp>
+
+// Fwd declaration (to reduce compiule time):
+namespace spdlog
+{
+  class logger;
+}
 
 namespace Net
 {
@@ -15,21 +22,23 @@ namespace Net
     //-----------------------------------------------------------------------//
     // Concurrency Models:                                                   //
     //-----------------------------------------------------------------------//
-    enum class EConcurModel: int
-    {
-      Sequential = 0,          // No concurrency
-      Fork       = 1,          // Create a new process for each TCP client
-      Thread     = 2,          // Spawn  a new thread  for each TCP client
-      ThreadPool = 3           // Re-use existing threads
-    };
+    UTXX_ENUM
+    (
+      EConcurModel, int,
+      Sequential,              // No concurrency
+      Fork,                    // Create a new process for each TCP client
+      Thread,                  // Spawn  a new thread  for each TCP client
+      ThreadPool               // Re-use existing threads
+    )
 
   private:
     //-----------------------------------------------------------------------//
     // Data Flds:                                                            //
     //-----------------------------------------------------------------------//
-    int          const m_acceptorSD; // Acceptor Socket Descriprtor
-    EConcurModel const m_cmodel;
-    static bool        s_exitRun;    // NB: "static", i.e. class-wide!
+    int             const m_acceptorSD; // Acceptor Socket Descriprtor
+    EConcurModel    const m_cmodel;
+    spdlog::logger* const m_logger;     // PTR NOT OWNED!
+    static bool           s_exitRun;    // NB: "static", i.e. class-wide!
 
   public:
     //-----------------------------------------------------------------------//
@@ -45,16 +54,17 @@ namespace Net
     // Port and IPAddr are given explicitly:
     TCP_Acceptor
     (
-      int          a_port,
-      char const*  a_acceptor_ip = nullptr,
-      EConcurModel a_cmodel      = EConcurModel::Sequential
+      int             a_port,
+      spdlog::logger* a_logger,
+      char const*     a_acceptor_ip = nullptr,
+      EConcurModel    a_cmodel      = EConcurModel::Sequential
     );
 
     // Non-Default Ctor:
     // Port and IPAddr (optional) are given via command-line args:
     // -p Port [-i IPAddr] [-c Sequential|Fork|Thread|ThreadPool]
     // XXX: NOT THREAD SAFE!
-    TCP_Acceptor(int argc, char* argv[]);
+    TCP_Acceptor(int argc, char* argv[], spdlog::logger* a_logger);
 
     // Dtor:
     ~TCP_Acceptor();

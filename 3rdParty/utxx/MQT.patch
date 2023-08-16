@@ -1,0 +1,357 @@
+diff -Naur utxx-orig/detail/enum_helper.hpp utxx/detail/enum_helper.hpp
+--- utxx-orig/detail/enum_helper.hpp	2021-10-31 09:41:59.899256028 +0000
++++ utxx/detail/enum_helper.hpp	2021-10-31 09:42:14.489367638 +0000
+@@ -120,7 +120,7 @@
+ #   include <boost/serialization/access.hpp>
+ 
+ #   define UTXX__ENUM_FRIEND_SERIALIZATION__ \
+-    friend class boost::serialization::access
++    friend class boost::serialization::access;
+ # endif
+ #else
+ # ifndef UTXX__ENUM_FRIEND_SERIALIZATION__
+diff -Naur utxx-orig/detail/gettimeofday.hpp utxx/detail/gettimeofday.hpp
+--- utxx-orig/detail/gettimeofday.hpp	2021-10-31 09:41:59.899256028 +0000
++++ utxx/detail/gettimeofday.hpp	2021-10-31 09:13:42.136203044 +0000
+@@ -44,15 +44,15 @@
+ #else
+ static const unsigned long long DELTA_EPOCH_IN_MICROSECS = 11644473600000000ULL;
+ #endif
+- 
++
+ struct timezone
+ {
+   int  tz_minuteswest; /* minutes W of Greenwich */
+   int  tz_dsttime;     /* type of dst correction */
+ };
+- 
++
+ // Definition of a gettimeofday function
+- 
++
+ int gettimeofday(struct timeval *tv, struct timezone *tz)
+ {
+     using namespace System;
+@@ -67,8 +67,8 @@
+     if (NULL != tv) {
+         GetSystemTimeAsFileTime(&ft);
+ 
+-        // The GetSystemTimeAsFileTime returns the number of 100 nanosecond 
+-        // intervals since Jan 1, 1601 in a structure. Copy the high bits to 
++        // The GetSystemTimeAsFileTime returns the number of 100 nanosecond
++        // intervals since Jan 1, 1601 in a structure. Copy the high bits to
+         // the 64 bit tmpres, shift it left by 32 then or in the low 32 bits.
+         tmpres |= ft.dwHighDateTime;
+         tmpres <<= 32;
+@@ -77,11 +77,11 @@
+         // Convert to microseconds by dividing by 10
+         tmpres /= 10;
+ 
+-        // The Unix epoch starts on Jan 1 1970.  Need to subtract the difference 
++        // The Unix epoch starts on Jan 1 1970.  Need to subtract the difference
+         // in seconds from Jan 1 1601.
+         tmpres -= DELTA_EPOCH_IN_MICROSECS;
+ 
+-        // Finally change microseconds to seconds and place in the seconds value. 
++        // Finally change microseconds to seconds and place in the seconds value.
+         // The modulus picks up the microseconds.
+         tv->tv_sec = (long)(tmpres / 1000000UL);
+         tv->tv_usec = (long)(tmpres % 1000000UL);
+@@ -100,7 +100,7 @@
+ 
+     return 0;
+ }
+-    
++
+ #if 0
+ 
+ // Test routine for calculating a time difference
+@@ -108,7 +108,7 @@
+ {
+   struct timeval timediff;
+   char dummychar;
+- 
++
+ // Do some interval timing
+   gettimeofday(&timediff, NULL);
+   double t1=((double)timediff.tv_usec/1000000.0)+timediff.tv_sec;
+@@ -117,14 +117,14 @@
+   cout << "Give me a keystroke and press Enter." << endl;
+   cin >> dummychar;
+   cout << "Thanks." << endl;
+- 
++
+ //Now that you have measured the user's reaction time, display the results in seconds
+   gettimeofday(&timediff, NULL);
+   double t2=((double)timediff.tv_usec/1000000.0)+timediff.tv_sec;
+   cout << t2-t1 << " seconds have elapsed" << endl;
+   return 0;
+ }
+-    
++
+ #endif
+ 
+ #endif // defined(__WIN32) || defined(__windows__)
+diff -Naur utxx-orig/enum_flags.hpp utxx/enum_flags.hpp
+--- utxx-orig/enum_flags.hpp	2021-10-31 09:27:20.792501828 +0000
++++ utxx/enum_flags.hpp	2021-10-31 08:01:18.512751895 +0000
+@@ -100,9 +100,9 @@
+                 BOOST_PP_SEQ_FOR_EACH_I(                                       \
+                     UTXX_ENUM_INTERNAL_INIT__, _,                              \
+                     BOOST_PP_VARIADIC_SEQ_TO_SEQ(__VA_ARGS__))),               \
+-            _END_ =  1 << BOOST_PP_SEQ_SIZE(                                   \
++            X_END_X = 1 << BOOST_PP_SEQ_SIZE(                                  \
+                             BOOST_PP_VARIADIC_SEQ_TO_SEQ(__VA_ARGS__)),        \
+-            _ALL_ = std::make_unsigned<TYPE>::type(_END_) - 1                  \
++            X_ALL_X = std::make_unsigned<TYPE>::type(X_END_X) - 1              \
+         };                                                                     \
+                                                                                \
+     public:                                                                    \
+@@ -141,7 +141,7 @@
+         constexpr bool     has(type   a) const { return m_val & TYPE(a); }     \
+         constexpr bool has_any(TYPE   a) const { return m_val & a;         }   \
+         constexpr bool has_all(TYPE   a) const { return (m_val & a) == a;  }   \
+-        static constexpr bool   valid(TYPE a)  { return a < _END_;    }        \
++        static constexpr bool   valid(TYPE a)  { return a < X_END_X;     }     \
+         static constexpr TYPE   size()         { return s_size;       }        \
+                                                                                \
+         ENUM operator=  (type   a) { m_val  = TYPE(a);   return *this; }       \
+diff -Naur utxx-orig/enum.hpp utxx/enum.hpp
+--- utxx-orig/enum.hpp	2021-10-31 09:27:20.792501828 +0000
++++ utxx/enum.hpp	2021-10-31 08:03:55.653969138 +0000
+@@ -147,16 +147,16 @@
+         using value_type = TYPE;                                               \
+                                                                                \
+         enum type : TYPE {                                                     \
+-            DEF_NAME = DEF_VAL,                                                \
+-            _START_  = (TYPE)(FIRST_VAL-1),                                    \
++            DEF_NAME  = DEF_VAL,                                               \
++            X_START_X = (TYPE)(FIRST_VAL-1),                                   \
+             BOOST_PP_SEQ_ENUM(BOOST_PP_SEQ_TRANSFORM(                          \
+                 UTXX_ENUM_INTERNAL_GET_0__, _,                                 \
+                 BOOST_PP_VARIADIC_SEQ_TO_SEQ(__VA_ARGS__))),                   \
+-            _END_                                                              \
++            X_END_X                                                            \
+         };                                                                     \
+                                                                                \
+         constexpr ENUM()         noexcept: m_val(DEF_NAME) {                   \
+-            static_assert(DEF_VAL < FIRST_VAL || DEF_VAL >= int(_END_),        \
++            static_assert(DEF_VAL < FIRST_VAL || DEF_VAL >= int(X_END_X),      \
+                           "Init value must be outside of first and last!");    \
+         }                                                                      \
+         constexpr ENUM(type v)   noexcept: m_val(v) {}                         \
+@@ -239,8 +239,8 @@
+                                                                                \
+         static constexpr size_t size()  { return s_size-1; }                   \
+         static constexpr type   begin() { return type(FIRST_VAL); }            \
+-        static constexpr type   end()   { return _END_; }                      \
+-        static constexpr type   last()  { return type(_END_-1); }              \
++        static constexpr type   end()   { return X_END_X; }                    \
++        static constexpr type   last()  { return type(X_END_X-1); }            \
+         static constexpr type   inc(type x) { return type(int(x)+1);   }       \
+                                                                                \
+         template <typename Visitor>                                            \
+@@ -271,7 +271,7 @@
+             return names()[m];                                                 \
+         }                                                                      \
+                                                                                \
+-        UTXX__ENUM_FRIEND_SERIALIZATION__;                                     \
++        UTXX__ENUM_FRIEND_SERIALIZATION__                                      \
+                                                                                \
+         type m_val;                                                            \
+     }
+diff -Naur utxx-orig/enumu.hpp utxx/enumu.hpp
+--- utxx-orig/enumu.hpp	2021-10-31 09:27:20.792501828 +0000
++++ utxx/enumu.hpp	2021-10-31 08:04:16.164128000 +0000
+@@ -53,7 +53,7 @@
+ #   include <boost/serialization/access.hpp>
+ 
+ #   define UTXX__ENUM_FRIEND_SERIALIZATION__ \
+-    friend class boost::serialization::access
++    friend class boost::serialization::access;
+ # endif
+ #else
+ # ifndef UTXX__ENUM_FRIEND_SERIALIZATION__
+@@ -142,12 +142,12 @@
+         using value_type = TYPE;                                               \
+                                                                                \
+         enum type : TYPE {                                                     \
+-            DEF_NAME = (DEF_VAL),                                              \
+-            _START_  = (TYPE)(FIRST_VAL-1),                                    \
++            DEF_NAME  = (DEF_VAL),                                             \
++            X_START_X = (TYPE)(FIRST_VAL-1),                                   \
+             BOOST_PP_SEQ_ENUM(BOOST_PP_SEQ_TRANSFORM(                          \
+                 UTXX_ENUM_INTERNAL_GET_NAMEVAL__, _,                           \
+                 BOOST_PP_VARIADIC_SEQ_TO_SEQ(__VA_ARGS__))),                   \
+-            _END_                                                              \
++            X_END_X                                                            \
+         };                                                                     \
+                                                                                \
+         using meta_type  = std::tuple<type, std::string, std::string>;         \
+@@ -234,8 +234,8 @@
+                                                                                \
+         static constexpr size_t size()  { return s_size-1; }                   \
+         static constexpr type   begin() { return type(FIRST_VAL); }            \
+-        static constexpr type   end()   { return _END_; }                      \
+-        static constexpr type   last()  { return type(_END_-1); }              \
++        static constexpr type   end()   { return X_END_X; }                    \
++        static constexpr type   last()  { return type(X_END_X-1); }            \
+         static constexpr type   inc(type x) { return type(int(x)+1);   }       \
+                                                                                \
+         template <typename Visitor>                                            \
+@@ -275,7 +275,7 @@
+             }                                                                  \
+         }                                                                      \
+                                                                                \
+-        UTXX__ENUM_FRIEND_SERIALIZATION__;                                     \
++        UTXX__ENUM_FRIEND_SERIALIZATION__                                      \
+                                                                                \
+         type m_val;                                                            \
+     }
+diff -Naur utxx-orig/enumv.hpp utxx/enumv.hpp
+--- utxx-orig/enumv.hpp	2021-10-31 09:27:20.792501828 +0000
++++ utxx/enumv.hpp	2021-10-31 08:04:33.234260220 +0000
+@@ -53,7 +53,7 @@
+ #   include <boost/serialization/access.hpp>
+ 
+ #   define UTXX__ENUM_FRIEND_SERIALIZATION__ \
+-    friend class boost::serialization::access
++    friend class boost::serialization::access;
+ # endif
+ #else
+ # ifndef UTXX__ENUM_FRIEND_SERIALIZATION__
+@@ -153,12 +153,12 @@
+         using value_type = TYPE;                                               \
+                                                                                \
+         enum type : TYPE {                                                     \
+-            DEF_NAME = DEF_VAL,                                                \
+-            _START_  = (TYPE)(FIRST_VAL-1),                                    \
++            DEF_NAME  = DEF_VAL,                                               \
++            X_START_X = (TYPE)(FIRST_VAL-1),                                   \
+             BOOST_PP_SEQ_ENUM(BOOST_PP_SEQ_TRANSFORM(                          \
+                 UTXX_ENUM_INTERNAL_GET_NAMEVAL__, _,                           \
+                 BOOST_PP_VARIADIC_SEQ_TO_SEQ(__VA_ARGS__))),                   \
+-            _END_                                                              \
++            X_END_X                                                            \
+         };                                                                     \
+                                                                                \
+         constexpr ENUM()       noexcept : m_val(DEF_NAME)  {}                  \
+@@ -243,8 +243,8 @@
+                                                                                \
+         static constexpr size_t size()  { return s_size-1; }                   \
+         static constexpr type   begin() { return type(FIRST_VAL); }            \
+-        static constexpr type   end()   { return _END_; }                      \
+-        static constexpr type   last()  { return type(_END_-1); }              \
++        static constexpr type   end()   { return X_END_X; }                    \
++        static constexpr type   last()  { return type(X_END_X-1); }            \
+         static constexpr type   inc(type x) { return type(int(x)+1);   }       \
+                                                                                \
+         template <typename Visitor>                                            \
+@@ -283,7 +283,7 @@
+             return (it == metas().end() ? null_pair() : *it).second;           \
+         }                                                                      \
+                                                                                \
+-        UTXX__ENUM_FRIEND_SERIALIZATION__;                                     \
++        UTXX__ENUM_FRIEND_SERIALIZATION__                                      \
+                                                                                \
+         type m_val;                                                            \
+     }
+diff -Naur utxx-orig/error.cpp utxx/error.cpp
+--- utxx-orig/error.cpp	2021-10-31 09:27:37.292628808 +0000
++++ utxx/error.cpp	2021-10-30 22:21:19.223928035 +0000
+@@ -36,4 +36,4 @@
+     /// Controls src_info printing defaults
+     int src_info_defaults::s_print_fun_scopes = def_print_scopes();
+ 
+-} // namespace utxx
+\ No newline at end of file
++} // namespace utxx
+diff -Naur utxx-orig/meta.hpp utxx/meta.hpp
+--- utxx-orig/meta.hpp	2021-10-31 09:27:20.792501828 +0000
++++ utxx/meta.hpp	2021-10-31 09:14:28.886562666 +0000
+@@ -78,7 +78,7 @@
+ template <size_t N>
+ using upper_power2 = upper_power<N, 2>;
+ 
+-/// Given the size N and alignment size get the number of padding and aligned 
++/// Given the size N and alignment size get the number of padding and aligned
+ /// space needed to hold the structure of N bytes.
+ template<int N, int Size>
+ class align {
+diff -Naur utxx-orig/string.hpp utxx/string.hpp
+--- utxx-orig/string.hpp	2021-10-31 09:27:20.792501828 +0000
++++ utxx/string.hpp	2021-10-31 09:14:18.416482124 +0000
+@@ -96,7 +96,7 @@
+     template <int N>
+     int strnlen(const char (&s)[N]) { return strnlen(s, s+N); }
+ 
+-#pragma GCC diagnostic pop    
++#pragma GCC diagnostic pop
+ 
+     /// Return the static length of any given type.
+     /// Example:
+@@ -390,9 +390,9 @@
+     /// Find \a s in the static array of string \a choices.
+     /// @return position of \a s in the \a choices array or \a def if
+     ///         the string not found.
+-    /// 
++    ///
+     template <typename T>
+-    inline T find_index(const char* choices[], size_t n, 
++    inline T find_index(const char* choices[], size_t n,
+                         const std::string& s,  T def = static_cast<T>(-1),
+                         bool a_nocase = false) {
+         for (size_t i=0; i < n; ++i)
+@@ -405,9 +405,9 @@
+     /// @param len is the length of \a value. If 0, return \a def.
+     /// @return position of \a value in the \a choices array or \a def if
+     ///         the string not found.
+-    /// 
++    ///
+     template <typename T>
+-    inline T find_index(const char* choices[], size_t n, 
++    inline T find_index(const char* choices[], size_t n,
+                         const char* value,     size_t len,
+                         T def = static_cast<T>(-1),
+                         bool a_nocase = false) {
+@@ -421,7 +421,7 @@
+     /// Find \a value in the static array of string \a choices.
+     /// @return position of \a value in the \a choices array or \a def if
+     ///         the string not found.
+-    /// 
++    ///
+     template <typename T, int N>
+     inline T find_index(const char* (&choices)[N], const std::string& value,
+         T def = static_cast<T>(-1), bool a_nocase = false)
+@@ -433,7 +433,7 @@
+     /// @param len is the length of \a value. If 0, return \a def.
+     /// @return position of \a value in the \a choices array or \a def if
+     ///         the string not found.
+-    /// 
++    ///
+     template <typename T, int N>
+     inline T find_index(const char* (&choices)[N], const char* value, size_t len,
+         T def = static_cast<T>(-1), bool a_nocase = false)
+@@ -480,8 +480,8 @@
+     ///
+     typedef std::basic_string<char, traits_nocase> string_nocase;
+ 
+-    inline std::ostream& operator<< ( std::ostream& stm, const string_nocase& str ) { 
+-        return stm << reinterpret_cast<const std::string&>(str) ; 
++    inline std::ostream& operator<< ( std::ostream& stm, const string_nocase& str ) {
++        return stm << reinterpret_cast<const std::string&>(str) ;
+     }
+ 
+     inline std::istream& operator>> (std::istream& stm, string_nocase& str) {
+diff -Naur utxx-orig/time_val.hpp utxx/time_val.hpp
+--- utxx-orig/time_val.hpp	2021-10-31 09:27:20.792501828 +0000
++++ utxx/time_val.hpp	2021-10-31 09:14:11.876431815 +0000
+@@ -599,7 +599,7 @@
+         auto duration = a_tp.time_since_epoch();
+         auto sec      = duration_cast<seconds>(duration);
+         auto nanosec  = duration_cast<nanoseconds>(duration - sec);
+-        return timespec{sec.count(), nanosec.count()}; 
++        return timespec{sec.count(), nanosec.count()};
+     }
+ 
+     /// Simple timer for measuring interval of time
