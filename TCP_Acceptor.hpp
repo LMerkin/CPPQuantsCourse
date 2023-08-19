@@ -62,11 +62,11 @@ namespace Net
         // Log possible exceptions:
         catch (std::exception const& exn)
         {
-          m_logger->error("EXCEPTION in ProtoDialogue: {}", exn.what());
+          m_logger->error(1, "EXCEPTION in ProtoDialogue: {}", exn.what());
         }
         catch (...)
         {
-          m_logger->error("UNKNOWN EXCEPTION in ProtoDialogue");
+          m_logger->error(1, "UNKNOWN EXCEPTION in ProtoDialogue");
         }
         break;
 
@@ -94,14 +94,14 @@ namespace Net
           // Log possible exceptions:
           catch (std::exception const& exn)
           {
-            m_logger->error("EXCEPTION in ProtoDialogue(Child): {}",
+            m_logger->error(1, "EXCEPTION in ProtoDialogue(Child): {}",
                             exn.what());
             (void) close(sd1);
             exit(1);       // Child terminated with error
           }
           catch (...)
           {
-            m_logger->error("UNKNOWN EXCEPTION in ProtoDialogue(Child)");
+            m_logger->error(1, "UNKNOWN EXCEPTION in ProtoDialogue(Child)");
             (void) close(sd1);
             exit(1);       // Child terminated with error
           }
