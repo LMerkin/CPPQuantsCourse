@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <cassert>
+#include <utility>
 #include <spdlog/spdlog.h>
 
 namespace Net
@@ -23,13 +24,17 @@ namespace Net
   template<typename UserAction>
   class HTTPProtoDialogue
   {
+  public:
+    // For passing (Key, Val) params to UserAction:
+    using KV = std::pair<char const*, char const*>;
+
   private:
     UserAction            m_userAction;
     int     const         m_recvBuffSz;
     char    const         m_recvBuff;
-    int     const         m_sendBuffSz;
-    char*   const         m_sendBuff;
-    spdlog::logger* const m_logger;     // NOT OWNED!
+    int     const         m_maxKVs;
+    KV*     const         m_KVs;
+    spdlog::logger* const m_logger;         // NOT OWNED!
 
   public:
     //-----------------------------------------------------------------------//
@@ -44,13 +49,14 @@ namespace Net
       UserAction const& a_user_action,
       spdlog::logger*   a_logger,
       unsigned          a_recv_buff_sz = 65536,
-      unsigned          a_send_buff_sz = 65536
+      unsigned          a_max_kvs      = 256,
+      unsigned          a_max_out_sz   = 65536
     )
     : m_userAction(a_user_action),  // Copy Ctor on "UserAction" invoked here!
       m_recvBuffSz(int(a_recv_buff_sz)),
       m_recvBuff  (new char[m_recvBuffSz]),
-      m_sendBuffSz(int(a_send_buff_sz)),
-      m_sendBuff  (new char[m_sendBuffSz]),
+      m_maxKVs    (int(a_max_kvs)),
+      m_KVs       (new KV  [m_maxKVs]),
       m_logger    (a_logger)
     {
       assert(m_logger != nullptr);
@@ -63,8 +69,8 @@ namespace Net
     : m_userAction(a_right.m_userAction),
       m_recvBuffSz(a_right.m_recvBuffSz),
       m_recvBuff  (new char[m_recvBuffSz]), // DON'T CREATE ALIASES!
-      m_sendBuffSz(a_right.m_sendBuffSz),
-      m_sendBuf   (new char[m_sendBuffSz]), // ditto
+      m_maxKVs    (a_right.m_maxKVs),
+      m_KVs       (new KV  [m_maxKVs]),
       m_logger    (a_right.m_logger)        // Here aliasing is OK!
     {
       // NB: Buffer contents are assumed to be transient, so there is no need
@@ -78,10 +84,10 @@ namespace Net
     ~HTTPProtoDialogue()
     {
       delete[] (m_recvBuff);
-      delete[] (m_sendBuff);
+      delete[] (m_maxKVs);
       // Protection against potential multiple Dtor invocation:
       const_cast<char*&>(m_recvBuff) = nullptr;
-      const_cast<char*&>(m_sendBuff) = nullptr;
+      const_cast<KV*&>  (m_KVs)      = nullptr;
     }
 
     //-----------------------------------------------------------------------//
@@ -97,9 +103,10 @@ namespace Net
       //---------------------------------------------------------------------//
       // Receive multiple requests from the client:                          //
       //---------------------------------------------------------------------//
-      while (1)
+      while (true)
       {
         // Clean the recv buffer for safety:
+        // FIXME
         memset(m_recvBuff, '\0', m_recvBuffSz);
 
         //-------------------------------------------------------------------//
@@ -155,149 +162,218 @@ namespace Net
           m_logger->info(3, "SD={}: Unsupported Method: %s\n",
                          a_sd, m_recvBuff);
           // Send the 501 error to the client:
-          strcpy(m_sendBuff, "HTTP/1.1 501 Unsupported request\r\n\r\n");
-          send  (a_sd, m_sendBuff, strlen(m_sendBuff), 0);
+          constexpr char errMsg[] = "HTTP/1.1 501 Unsupported request\r\n\r\n";
+          (void) send (a_sd, errMsg, sizeof(errMsg)-1, 0);
           goto NextReq;
         }
-    // 0-terminate the 1st line:
-    // FIXME:
-    char*  lineEnd =  strstr(reqBuff, "\r\n");
-    assert(lineEnd != NULL);
-    *lineEnd = '\0';
 
-    // Find Path: It must begin with a '/', with ' ' afterwards:
-    // Start with (reqBuff+4), ie skip "GET " which we checked is there:
-    char* path    = strchr(reqBuff + 4,   '/');
-    char* pathEnd = (path == nullptr) ? nullptr : strchr(path, ' ');
+        // 0-terminate the 1st line:
+        char*  lineEnd =  strstr(reqBuff, "\r\n");
+        assert(lineEnd != nullptr && lineEnd < m_recvBuff + rc);
+        *lineEnd = '\0';
 
-    // 0-terminate path:
-    if (pathEnd == nullptr)
-    {
-      fprintf(stderr,  "INFO: SD=%d: Missing Path: %s\n", a_sd, reqBuff);
-      // Send the 501 error to the client:
-      strcpy(sendBuff, "HTTP/1.1 501 Missing Path\r\n\r\n");
-      send  (a_sd, sendBuff, strlen(sendBuff), 0);
-      goto NextReq;
-    }
-    // OK, got a valid and framed path:
-    assert(path != nullptr);
-    *pathEnd = '\0';
+        // Find the Path: It must begin with a '/', with ' ' afterwards:
+        // Start with (reqBuff+4), ie skip "GET " which we checked is there:
+        // XXX: Extra spaces between "GET" and Path are not allowed, as well
+        //      as extra spaces at the end of the Path:
+        char* path    = strchr(m_recvBuff + 4,  '/');
+        char* pathEnd = (path == nullptr) ? nullptr : strchr(path, ' ');
 
-    // Check the HTTP version (beyond pathEnd):
-    char const* httpVer =  strstr (pathEnd + 1, "HTTP/");
-    if (httpVer == NULL || strncmp(httpVer + 5, "1.1", 3) != 0)
-    {
-      fprintf(stderr,  "INFO: SD=%d: Invalid HTTPVer: %s\n", a_sd, reqBuff);
-      // Send the 501 error to the client:
-      strcpy(sendBuff,
-        "HTTP/1.1 501 Unsupported/Invalid HTTP Version\r\n\r\n");
-      send  (a_sd, sendBuff, strlen(sendBuff), 0);
-      goto NextReq;
-    }
-    // Parse the Headers. We are only interested in the "Connection: " header:
-    char const* nextLine = httpVer + 10;  // Was: "HTTP/1.1\r\n"
-    char const* connHdr  = strstr(nextLine, "Connection: ");
+        if (pathEnd == nullptr)
+        {
+          // This is not a correct req -- path not found:
+          m_logger->info(3, "SD={}: Missing Path in\n{}\n", a_sd, m_recvBuff);
 
-    if (connHdr != NULL)
-    {
-      char const* connHdrVal = connHdr + 12;
-      // Skip any further spaces:
-      for (; *connHdrVal == ' '; ++connHdrVal) ;
+          // Send the 501 error to the client:
+          constexpr char errMsg[] = "HTTP/1.1 501 Missing Path\r\n\r\n";
+          (void) send (a_sd, errMsg, sizeof(errMsg)-1, 0);
+          goto NextReq;
+        }
+        // NB: Do not 0-terminate the Path yet, it may truncate the log msg
+        // below:
 
-      if (strncasecmp(connHdrVal, "Keep-Alive", 11) == 0)
-        keepAlive = 1;
-      else
-      if (strncasecmp(connHdrVal, "Close", 5) != 0)
-        connHdr = NULL;  // INVALID!
-    }
-    if (connHdr == NULL)
-    {
-      fprintf(stderr,
-        "INFO: SD=%d: Missing/Invalid Connecton: Header\n", a_sd);
+        // Check the HTTP version  (end of 1st req line, beyond pathEnd):
+        // It needs to be HTTP/1.1 (other versions not supported here):
+        char const* HTTP11 = "HTTP/1.1";
 
-      // Send the 501 error to the client:
-      strcpy(sendBuff,
-        "HTTP/1.1 501 Missing/Invalid Connection Header\r\n\r\n");
-      send  (a_sd, sendBuff, strlen(sendBuff), 0);
-      goto NextReq;
-    }
-    // Got Path and KeepAlive params!
+        char const* httpVer =  strstr(pathEnd + 1, HTTP11);
+        if (httpVer == nullptr)
+        {
+          m_logger->info(3, "SD={}: Invalid HTTPVer in\n{}\n",
+                         a_sd, m_recvBuff);
+          // Send the 501 error to the client:
+          constexpr char errMsg[] =
+            "HTTP/1.1 501 Unsupported/Invalid HTTP Version\r\n\r\n";
+          (void) send(a_sd, errMsg, sizeof(errMsg)-1, 0);
+          goto NextReq;
+        }
+
+        // OK, we can now 0-terminate the Path:
+        assert(path != nullptr && path < pathEnd && pathEnd < lineEnd);
+        *pathEnd = '\0';
+
+        // 1st line of the request done.
+        // Now parse the Headers. XXX: We are currently only interested in the
+        // "Connection: " header, so search for it directly -- all others are
+        // ignored:
+        char const* nextLine = httpVer + strlen(HTTP11) + 2;
+        char const* ConnKey  = "Connection: ";
+        char const* connHdr  = strstr(nextLine, ConnKey);
+        // XXX: Or use "strcasestr" for case-insensitive search?
+
+        if (connHdr != nullptr)
+        {
+          char const* connHdrVal = connHdr + strlen(ConnKey);
+          // XXX: Assume there are no extra spaces between the HdrKey and the
+          // HdrVal:
+          if (strncasecmp(connHdrVal, "Keep-Alive", 11) == 0)
+            keepAlive = true;
+          else
+          if (strncasecmp(connHdrVal, "Close", 5) != 0)
+          {
+            assert(!keepAlive);
+            connHdr = nullptr;  // INVALID; keepAlive remains false
+          }
+        }
+        if (connHdr == nullptr)
+        {
+          m_logger->info(3, "SD={}: Missing/Invalid \"Connecton: \" Header",
+                         a_sd);
+          // Send the 501 error to the client:
+          constexpr char errMsg[] =
+            "HTTP/1.1 501 Missing/Invalid Connection Header\r\n\r\n";
+          (void) send  (a_sd, errMsg, sizeof(errMsg)-1, 0);
+          goto NextReq;
+        }
+        // So: Got the Path and KeepAlive params!
+        //-------------------------------------------------------------------//
+        // Process the HTTP GET request given by Path:                       //
+        //-------------------------------------------------------------------//
+        // Parse the Path which is assume to be:
+        // /OpName?Key1=Val1&...&KeyN=ValN
+        //
+        assert(*path = '/');
+        char const* optName = path + 1;
+
+        // Find the end of "optName";
+        int N = 0;
+        char* optNameEnd = strchr(optName, '?');
+        if (optNameEnd != nullptr)
+        {
+          assert(optNameEnd < pathEnd);
+          // 0-terminate the optName:
+          *optNameEnd = '\0';
+
+          char const* key = optNameEnd + 1;
+          for (; N < m_maxKVs && key < pathEnd; ++N)
+          {
+            char const* eq = strchar(key, '=');
+            if (eq == nullptr || eq == key+1 || eq == pathEnd-1)
+            {
+              constexpr char errMsg[] =
+                "HTTP/1.1 501 Incorrect Key=Val params\r\n\r\n";
+              (void) send  (a_sd, errMsg, sizeof(errMsg)-1, 0);
+              goto NextReq;
+            }
+            char const* val = eq + 1;
+
+            // Find the next key and 0-terminate the val. If not found, we are
+            // at the end of Path:
+            char* amp = strchr(val, '&');
+            if (amp != nullptr)
+              *amp = '\0';
  
-    /*
-    // FIXME: Security considerations are very weak here!
-    assert(*path == '/');
-    // Prepend path with '.' to make it relative to the current working
-    // directory of the server: XXX: Bad style, but wotks in this case:
-    --path;
-    *path = '.';
+            // Store the (key,val) ptrs:
+            m_KVs[N] = std::make_pair(key, val);
 
-    // Open the file specified by path:
-    int fd = open(path, O_RDONLY);
+            // Continue or done?
+            if (amp == nullptr)
+              break;
+            key = amp + 1;
+          }
+        }
 
-    struct stat statBuff;
-    rc   = fstat(fd, &statBuff);
-    // We can only service regular files:
-    int isRegFile = S_ISREG(statBuff.st_mode);
+        //-------------------------------------------------------------------//
+        // Invoke the UserAction:                                            //
+        //-------------------------------------------------------------------//
+        // (respBody, respLen) = UserAction(char const*, int, KV const*) :
+        //
+        std::pair<char const*, int> userResp = m_userAction(opName, N, m_KVs);
 
-    if (fd < 0 || rc < 0 || !isRegFile)
-    {
-      fprintf(stderr,  "INFO: Missing/Unaccessible file: %s\n", path);
-      // Send a 401 error to the client:
-      strcpy(sendBuff, "HTTP/1.1 401 Missing File\r\n\r\n");
-      send  (a_sd, sendBuff, strlen(sendBuff), 0);
-      goto NextReq;
-    }
-    // Get the file size:
-    size_t fileSize = statBuff.st_size;
-    */
-    // TODO:
-    // FORM THE RESPONSE
+        //-------------------------------------------------------------------//
+        // RESPONSE to the client:                                           //
+        //-------------------------------------------------------------------//
+        int respLen = std::max(userResp.second, 0);
 
-    // Response to the client:
-    sprintf(sendBuff,
-      "HTTP/1.1 200 OK\r\n"
-      "Content-Type: text/plain\r\n"
-      "Content-Length: %ld\r\n"
-      "Connection: %s\r\n\r\n",
-      fileSize,
-      keepAlive ? "Keep-Alive" : "Close");
+        if (userResp.fisrt == nullptr)
+          respLen = 0;
+        if (respLen == 0)
+          userResp.first =    nullptr;
 
-    // Read the file in chunks and send it to the client:
-    rc = send(a_sd, sendBuff, chunkSize, 0);
+        keepAlive &= (respLen > 0);
 
-      // rc <  0: network error;
-      // rc == 0: client SWAMPED by our data;
-      // XXX:  in both cases, disconnect:
-      if (rc <= 0)
-      {
-        fprintf(stderr, "ERROR: SD=%d: send returned %d: %s, errno=%d\n",
-                a_sd, rc, strerror(errno), errno);
-        close(fd);
-        close(a_sd);
-        return rc;
+        // Form the 1st resp line and headers:
+        // XXX: Formatted output by "sprintf" may be slightly inefficient:
+        char hdrsBuff[256];
+        rc = snprintf
+        (
+          hdrsBuff, sizeof(hdrsBuff),
+          "HTTP/1.1 200 OK\r\n"
+          "Content-Type: text/plain\r\n"
+          "Content-Length: %d\r\n"
+          "Connection: %s\r\n\r\n",
+          respLen,
+          keepAlive ? "Keep-Alive" : "Close"
+        );
+        assert(rc < sizeof(hdrsBuff));
+
+        // Gather the data to be sent from "hdrsBuff" and "m_userOut":
+        iovec  iov[2]
+        {
+          { .iov_base = hdrsBuff,       .iov_len = rc      },
+          { .iov_base = userResp.first, .iov_len = respLen }  // NULL/0 is OK
+        };
+
+        msghdr gather
+        {
+          .msg_name       = nullptr,
+          .msg_namelen    = 0,
+          .msg_iov        = &iov,
+          .msg_iovlen     = 2,
+          .msg_control    = nullptr,
+          .msg_controllen = 0,
+          .msg_flags      = 0
+        };
+
+        // Finally, send the response out:
+        rc = sendmsg(a_sd, &gather, 0);
+
+        // rc <  0: network error;
+        // rc == 0: client SWAMPED by our data;
+        // XXX:  in both cases, disconnect; EINTR is extremely unlikely here:
+        //
+        if (rc <= 0)
+        {
+          m_logger->error(3, "SD={}: sendmsg failed: errno={}: {}",
+                          a_sd, errno, strerror(errno));
+          close(a_sd);
+          return;
+        }
+
+        //-------------------------------------------------------------------//
+        // Done with this Req:                                               //
+        //-------------------------------------------------------------------//
+      NextReq:
+        if (!keepAlive)
+        {
+          m_logger->info(3, "SD={} closed", a_sd)
+          close(a_sd);
+          return;
+        }
       }
-    /*
-    while (1)
-    {
-      int chunkSize = read(fd,  sendBuff, sizeof(sendBuff));
-
-      // Exit normally if got to the end of file (or file reading error):
-      if (chunkSize < sizeof(sendBuff))
-      {
-        close(fd);
-        break;
-      }
+      // End of infinite "while" loop
     }
-    */
-    // Done with this Req:
-  NextReq:
-    if (!keepAlive)
-    {
-      close(a_sd);
-      fprintf(stderr, "INFO: SD=%d closed: Keep-Alive=0\n", a_sd);
-      return 0;
-    }
-  }
-  // This point is unreachable!
-  __builtin_unreachable();
+    // End of "operator()"
+  };
 }
+// End namespace Net
