@@ -11,8 +11,9 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <stdexcept>
-#include <spdlog/spdlog.h>
 #include <utxx/error.hpp>
+#define  SPDLOG_USE_STD_FORMAT
+#include <spdlog/spdlog.h>
 
 namespace Net
 {
@@ -62,11 +63,11 @@ namespace Net
         // Log possible exceptions:
         catch (std::exception const& exn)
         {
-          m_logger->error(1, "EXCEPTION in ProtoDialogue: {}", exn.what());
+          m_logger->error("EXCEPTION in ProtoDialogue: {}", exn.what());
         }
         catch (...)
         {
-          m_logger->error(1, "UNKNOWN EXCEPTION in ProtoDialogue");
+          m_logger->error("UNKNOWN EXCEPTION in ProtoDialogue");
         }
         break;
 
@@ -80,7 +81,7 @@ namespace Net
           {
             // Good style -- close unneeded file descriptors inherited from the
             // parent:
-            (void) close(m_socketSD);
+            (void) close(m_acceptorSD);
 
             //---------------------------------------------------------------//
             // Run the ProtoDialogue:                                        //
@@ -94,14 +95,14 @@ namespace Net
           // Log possible exceptions:
           catch (std::exception const& exn)
           {
-            m_logger->error(1, "EXCEPTION in ProtoDialogue(Child): {}",
+            m_logger->error("EXCEPTION in ProtoDialogue(Child): {}",
                             exn.what());
             (void) close(sd1);
             exit(1);       // Child terminated with error
           }
           catch (...)
           {
-            m_logger->error(1, "UNKNOWN EXCEPTION in ProtoDialogue(Child)");
+            m_logger->error("UNKNOWN EXCEPTION in ProtoDialogue(Child)");
             (void) close(sd1);
             exit(1);       // Child terminated with error
           }

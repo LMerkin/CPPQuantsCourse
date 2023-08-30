@@ -4,7 +4,7 @@ CXXFLAGS = -Wall  -std=c++20 -I./3rdParty
 
 VPATH = __BUILD__
 
-all: HelloWorld OptionPricer HTTPClient1 TCP_Acceptor.o
+all: HelloWorld OptionPricer HTTPClient1 HTTPServer1
 
 # HelloWorld executable depends directly on HelloWorld.cpp:
 HelloWorld: HelloWorld.cpp
@@ -22,6 +22,9 @@ BSM.o: BSM.cpp BSM.h
 
 TCP_Acceptor.o: TCP_Acceptor.cpp TCP_Acceptor.h
 	$(CXX) $(OPT) $(CXXFLAGS) -c -o $(VPATH)/$@ TCP_Acceptor.cpp
+
+HTTPServer1:    HTTPServer1.cpp HTTPProtoDialogue.hpp Echo.hpp TCP_Acceptor.o
+	$(CXX) $(OPT) $(CXXFLAGS) -o $(VPATH)/$@ HTTPServer1.cpp $(VPATH)/TCP_Acceptor.o
 
 clean:
 	rm -f $(VPATH)/*

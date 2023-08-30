@@ -3,6 +3,8 @@
 //                            "HTTPProtoDialogue.hpp":                       //
 //        Processing HTTP Requests in an Established Client Connection       //
 //===========================================================================//
+#pragma once
+
 #include <cstring>
 #include <cstdlib>
 #include <errno.h>
@@ -14,6 +16,7 @@
 #include <fcntl.h>
 #include <cassert>
 #include <utility>
+#define  SPDLOG_USE_STD_FORMAT
 #include <spdlog/spdlog.h>
 
 namespace Net
@@ -31,7 +34,7 @@ namespace Net
   private:
     UserAction            m_userAction;
     int     const         m_recvBuffSz;
-    char    const         m_recvBuff;
+    char*   const         m_recvBuff;
     int     const         m_maxKVs;
     KV*     const         m_KVs;
     spdlog::logger* const m_logger;         // NOT OWNED!
@@ -103,11 +106,23 @@ namespace Net
       //---------------------------------------------------------------------//
       // Receive multiple requests from the client:                          //
       //---------------------------------------------------------------------//
+      bool   keepAlive  = true;
+      size_t lastRecvSz = 
+      memset(m_recvBuff, '\0', m_recvBuffSz);    // For safety
+
       while (true)
       {
-        // Clean the recv buffer for safety:
-        // FIXME
-        memset(m_recvBuff, '\0', m_recvBuffSz);
+        //-------------------------------------------------------------------//
+        // Done with the prev Req:                                           //
+        //-------------------------------------------------------------------//
+        // NB: "keepAlive" is true 
+        if (!keepAlive)
+        {
+          m_logger->info("SD={} closed", a_sd)
+          close(a_sd);
+          return;
+        }
+        // Clean the recv buffer for safety: FIXME: Might be too expensive!
 
         //-------------------------------------------------------------------//
         // Receive 1 req from the client:                                    //
@@ -119,8 +134,8 @@ namespace Net
             continue;  // "recv" interrupted by a signal, try again!
           // Any other error: exit the dialogue:
           m_logger->error
-            (2, "HTTPProtoDialogue: SD={}, recv failed: errno={}: {}",
-              a_sd, errnostrerror(errno));
+            ("HTTPProtoDialogue: SD={}, recv failed: errno={}: {}",
+             a_sd, errno, strerror(errno));
           (void) close(a_sd);          // TCP_Acceptor will close it as well!
           return;
         }
@@ -128,7 +143,7 @@ namespace Net
         if (rc == 0)
         {
           m_logger->info
-            (3, "HTTPProtoDialogue: SD={}: Client disconnected", a_sd);
+            ("HTTPProtoDialogue: SD={}: Client disconnected", a_sd);
           (void) close(a_sd);
           return;
         }
@@ -141,8 +156,6 @@ namespace Net
         //-------------------------------------------------------------------//
         // Parse the request:                                                //
         //-------------------------------------------------------------------//
-        bool keepAlive = false;
-
         // XXX: We assume that we have received the whole req
         // (1st line + headers) at once, otherwise parsing would become REALLY
         // complex:
@@ -150,7 +163,7 @@ namespace Net
         //
         if (rc < 4 || strcmp(m_recvBuff + (rc - 4), "\r\n\r\n") != 0)
         {
-          m_logger->error(2, "SD={}: Incomplete Req, disconnecting", a_sd);
+          m_logger->error("SD={}: Incomplete Req, disconnecting", a_sd);
           (void) close(a_sd);
           return;
         }
@@ -159,21 +172,20 @@ namespace Net
         // Parse the 1st line. The method must be GET, others not supported:
         if (strncmp(m_recvBuff, "GET ", 4) != 0)
         {
-          m_logger->info(3, "SD={}: Unsupported Method: %s\n",
-                         a_sd, m_recvBuff);
+          m_logger->info("SD={}: Unsupported Method: %s\n", a_sd, m_recvBuff);
           // Send the 501 error to the client:
           constexpr char errMsg[] = "HTTP/1.1 501 Unsupported request\r\n\r\n";
           (void) send (a_sd, errMsg, sizeof(errMsg)-1, 0);
-          goto NextReq;
+          continue;
         }
 
         // 0-terminate the 1st line:
-        char*  lineEnd =  strstr(reqBuff, "\r\n");
+        char*  lineEnd =  strstr(m_recvBuff, "\r\n");
         assert(lineEnd != nullptr && lineEnd < m_recvBuff + rc);
         *lineEnd = '\0';
 
         // Find the Path: It must begin with a '/', with ' ' afterwards:
-        // Start with (reqBuff+4), ie skip "GET " which we checked is there:
+        // Start with (m_recvBuff+4), ie skip "GET " which we checked is there:
         // XXX: Extra spaces between "GET" and Path are not allowed, as well
         //      as extra spaces at the end of the Path:
         char* path    = strchr(m_recvBuff + 4,  '/');
@@ -182,12 +194,12 @@ namespace Net
         if (pathEnd == nullptr)
         {
           // This is not a correct req -- path not found:
-          m_logger->info(3, "SD={}: Missing Path in\n{}\n", a_sd, m_recvBuff);
+          m_logger->info("SD={}: Missing Path in\n{}\n", a_sd, m_recvBuff);
 
           // Send the 501 error to the client:
           constexpr char errMsg[] = "HTTP/1.1 501 Missing Path\r\n\r\n";
           (void) send (a_sd, errMsg, sizeof(errMsg)-1, 0);
-          goto NextReq;
+          continue;
         }
         // NB: Do not 0-terminate the Path yet, it may truncate the log msg
         // below:
@@ -199,13 +211,12 @@ namespace Net
         char const* httpVer =  strstr(pathEnd + 1, HTTP11);
         if (httpVer == nullptr)
         {
-          m_logger->info(3, "SD={}: Invalid HTTPVer in\n{}\n",
-                         a_sd, m_recvBuff);
+          m_logger->info("SD={}: Invalid HTTPVer in\n{}\n", a_sd, m_recvBuff);
           // Send the 501 error to the client:
           constexpr char errMsg[] =
             "HTTP/1.1 501 Unsupported/Invalid HTTP Version\r\n\r\n";
           (void) send(a_sd, errMsg, sizeof(errMsg)-1, 0);
-          goto NextReq;
+          continue;
         }
 
         // OK, we can now 0-terminate the Path:
@@ -237,13 +248,12 @@ namespace Net
         }
         if (connHdr == nullptr)
         {
-          m_logger->info(3, "SD={}: Missing/Invalid \"Connecton: \" Header",
-                         a_sd);
+          m_logger->info("SD={}: Missing/Invalid \"Connecton: \" Header", a_sd);
           // Send the 501 error to the client:
           constexpr char errMsg[] =
             "HTTP/1.1 501 Missing/Invalid Connection Header\r\n\r\n";
           (void) send  (a_sd, errMsg, sizeof(errMsg)-1, 0);
-          goto NextReq;
+          continue;
         }
         // So: Got the Path and KeepAlive params!
         //-------------------------------------------------------------------//
@@ -264,7 +274,9 @@ namespace Net
           // 0-terminate the optName:
           *optNameEnd = '\0';
 
-          char const* key = optNameEnd + 1;
+          char const* key     = optNameEnd + 1;
+          bool        invalid = false;
+
           for (; N < m_maxKVs && key < pathEnd; ++N)
           {
             char const* eq = strchar(key, '=');
@@ -273,7 +285,9 @@ namespace Net
               constexpr char errMsg[] =
                 "HTTP/1.1 501 Incorrect Key=Val params\r\n\r\n";
               (void) send  (a_sd, errMsg, sizeof(errMsg)-1, 0);
-              goto NextReq;
+
+              invalid = true;
+              break;
             }
             char const* val = eq + 1;
 
@@ -291,26 +305,43 @@ namespace Net
               break;
             key = amp + 1;
           }
+          if (invalid)
+            continue;
         }
 
         //-------------------------------------------------------------------//
         // Invoke the UserAction:                                            //
         //-------------------------------------------------------------------//
         // (respBody, respLen) = UserAction(char const*, int, KV const*) :
-        //
-        std::pair<char const*, int> userResp = m_userAction(opName, N, m_KVs);
+        std::pair<char const*, int> userResp {nullptr, 0};
+        try
+        {
+          userResp = m_userAction(optName, N, m_KVs);
+        }
+        catch (std::exception const& exn)
+        {
+          m_logger->error("EXCEPTION in UserAction: {}", exn.what());
+        }
+        catch (...)
+        {
+          m_logger->error("UNKNOWN EXCEPTION in UserAction");
+        }
 
         //-------------------------------------------------------------------//
         // RESPONSE to the client:                                           //
         //-------------------------------------------------------------------//
-        int respLen = std::max(userResp.second, 0);
+        int respLen = userResp.second;
 
-        if (userResp.fisrt == nullptr)
-          respLen = 0;
-        if (respLen == 0)
-          userResp.first =    nullptr;
+        // Handle errors first:
+        if (respLen <= 0 || userResp.first == nullptr)
+        {
+          constexpr char errMsg[] = "HTTP/1.1 401 No Result\r\n\r\n";
+          (void) send  (a_sd, errMsg, sizeof(errMsg)-1, 0);
+          continue;
+        }
 
-        keepAlive &= (respLen > 0);
+        // If we got here:
+        assert(respLen > 0 && userResp.second != nullptr);
 
         // Form the 1st resp line and headers:
         // XXX: Formatted output by "sprintf" may be slightly inefficient:
@@ -354,19 +385,8 @@ namespace Net
         //
         if (rc <= 0)
         {
-          m_logger->error(3, "SD={}: sendmsg failed: errno={}: {}",
+          m_logger->error("SD={}: sendmsg failed: errno={}: {}",
                           a_sd, errno, strerror(errno));
-          close(a_sd);
-          return;
-        }
-
-        //-------------------------------------------------------------------//
-        // Done with this Req:                                               //
-        //-------------------------------------------------------------------//
-      NextReq:
-        if (!keepAlive)
-        {
-          m_logger->info(3, "SD={} closed", a_sd)
           close(a_sd);
           return;
         }
