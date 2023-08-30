@@ -52,8 +52,7 @@ namespace Net
       UserAction const& a_user_action,
       spdlog::logger*   a_logger,
       unsigned          a_recv_buff_sz = 65536,
-      unsigned          a_max_kvs      = 256,
-      unsigned          a_max_out_sz   = 65536
+      unsigned          a_max_kvs      = 256
     )
     : m_userAction(a_user_action),  // Copy Ctor on "UserAction" invoked here!
       m_recvBuffSz(int(a_recv_buff_sz)),
@@ -87,7 +86,7 @@ namespace Net
     ~HTTPProtoDialogue()
     {
       delete[] (m_recvBuff);
-      delete[] (m_maxKVs);
+      delete[] (m_KVs);
       // Protection against potential multiple Dtor invocation:
       const_cast<char*&>(m_recvBuff) = nullptr;
       const_cast<KV*&>  (m_KVs)      = nullptr;
@@ -107,7 +106,7 @@ namespace Net
       // Receive multiple requests from the client:                          //
       //---------------------------------------------------------------------//
       bool   keepAlive  = true;
-      size_t lastRecvSz = 
+      size_t lastRecvSz = 0;
       memset(m_recvBuff, '\0', m_recvBuffSz);    // For safety
 
       while (true)
@@ -115,14 +114,19 @@ namespace Net
         //-------------------------------------------------------------------//
         // Done with the prev Req:                                           //
         //-------------------------------------------------------------------//
-        // NB: "keepAlive" is true 
+        // NB: "keepAlive" is true before the first invocation, then it depends
+        // on the prev request header:
         if (!keepAlive)
         {
-          m_logger->info("SD={} closed", a_sd)
+          m_logger->info("SD={} closed", a_sd);
           close(a_sd);
           return;
         }
-        // Clean the recv buffer for safety: FIXME: Might be too expensive!
+        // Clean the recv buffer for safety:
+        memset(m_recvBuff, '\0', lastRecvSz);
+
+        // Keep-Alive will be false unless specified explicitly in the next req:
+        keepAlive = false;
 
         //-------------------------------------------------------------------//
         // Receive 1 req from the client:                                    //
@@ -132,6 +136,7 @@ namespace Net
         {
           if (errno == EINTR)
             continue;  // "recv" interrupted by a signal, try again!
+
           // Any other error: exit the dialogue:
           m_logger->error
             ("HTTPProtoDialogue: SD={}, recv failed: errno={}: {}",
@@ -150,8 +155,10 @@ namespace Net
 
         // Recv successful: got "rc" bytes:
         assert(0 < rc && rc < m_recvBuffSz);
+        lastRecvSz = size_t(rc);
+
         // 0-terminate the bytes received:
-        m_recvBuff[rc] = '\0';
+        m_recvBuff[lastRecvSz] = '\0';
 
         //-------------------------------------------------------------------//
         // Parse the request:                                                //
@@ -161,7 +168,8 @@ namespace Net
         // complex:
         // Full req must have "\r\n\r\n" at the end:
         //
-        if (rc < 4 || strcmp(m_recvBuff + (rc - 4), "\r\n\r\n") != 0)
+        if (lastRecvSz < 4 ||
+            strcmp(m_recvBuff + (lastRecvSz - 4), "\r\n\r\n") != 0)
         {
           m_logger->error("SD={}: Incomplete Req, disconnecting", a_sd);
           (void) close(a_sd);
@@ -181,7 +189,7 @@ namespace Net
 
         // 0-terminate the 1st line:
         char*  lineEnd =  strstr(m_recvBuff, "\r\n");
-        assert(lineEnd != nullptr && lineEnd < m_recvBuff + rc);
+        assert(lineEnd != nullptr && lineEnd < m_recvBuff + lastRecvSz);
         *lineEnd = '\0';
 
         // Find the Path: It must begin with a '/', with ' ' afterwards:
@@ -262,12 +270,12 @@ namespace Net
         // Parse the Path which is assume to be:
         // /OpName?Key1=Val1&...&KeyN=ValN
         //
-        assert(*path = '/');
+        assert(*path == '/');
         char const* optName = path + 1;
 
         // Find the end of "optName";
         int N = 0;
-        char* optNameEnd = strchr(optName, '?');
+        char* optNameEnd = const_cast<char*>(strchr(optName, '?'));
         if (optNameEnd != nullptr)
         {
           assert(optNameEnd < pathEnd);
@@ -279,7 +287,7 @@ namespace Net
 
           for (; N < m_maxKVs && key < pathEnd; ++N)
           {
-            char const* eq = strchar(key, '=');
+            char const* eq = strchr(key, '=');
             if (eq == nullptr || eq == key+1 || eq == pathEnd-1)
             {
               constexpr char errMsg[] =
@@ -293,7 +301,7 @@ namespace Net
 
             // Find the next key and 0-terminate the val. If not found, we are
             // at the end of Path:
-            char* amp = strchr(val, '&');
+            char* amp = const_cast<char*>(strchr(val, '&'));
             if (amp != nullptr)
               *amp = '\0';
  
@@ -313,7 +321,7 @@ namespace Net
         // Invoke the UserAction:                                            //
         //-------------------------------------------------------------------//
         // (respBody, respLen) = UserAction(char const*, int, KV const*) :
-        std::pair<char const*, int> userResp {nullptr, 0};
+        std::pair<char const*, size_t> userResp {nullptr, 0};
         try
         {
           userResp = m_userAction(optName, N, m_KVs);
@@ -330,10 +338,10 @@ namespace Net
         //-------------------------------------------------------------------//
         // RESPONSE to the client:                                           //
         //-------------------------------------------------------------------//
-        int respLen = userResp.second;
+        size_t respLen = userResp.second;
 
         // Handle errors first:
-        if (respLen <= 0 || userResp.first == nullptr)
+        if (respLen == 0 || userResp.first == nullptr)
         {
           constexpr char errMsg[] = "HTTP/1.1 401 No Result\r\n\r\n";
           (void) send  (a_sd, errMsg, sizeof(errMsg)-1, 0);
@@ -341,35 +349,39 @@ namespace Net
         }
 
         // If we got here:
-        assert(respLen > 0 && userResp.second != nullptr);
+        assert(respLen > 0 && userResp.first != nullptr);
 
         // Form the 1st resp line and headers:
         // XXX: Formatted output by "sprintf" may be slightly inefficient:
         char hdrsBuff[256];
-        rc = snprintf
-        (
-          hdrsBuff, sizeof(hdrsBuff),
-          "HTTP/1.1 200 OK\r\n"
-          "Content-Type: text/plain\r\n"
-          "Content-Length: %d\r\n"
-          "Connection: %s\r\n\r\n",
-          respLen,
-          keepAlive ? "Keep-Alive" : "Close"
-        );
-        assert(rc < sizeof(hdrsBuff));
+
+        size_t hdrsLen =
+          size_t(snprintf
+          (
+            hdrsBuff, sizeof(hdrsBuff),
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/plain\r\n"
+            "Content-Length: %lu\r\n"
+            "Connection: %s\r\n\r\n",
+            respLen,
+            keepAlive ? "Keep-Alive" : "Close"
+          ));
+        assert(hdrsLen < sizeof(hdrsBuff));
 
         // Gather the data to be sent from "hdrsBuff" and "m_userOut":
-        iovec  iov[2]
+        iovec iov[2]
         {
-          { .iov_base = hdrsBuff,       .iov_len = rc      },
-          { .iov_base = userResp.first, .iov_len = respLen }  // NULL/0 is OK
+          { .iov_base = hdrsBuff,       .iov_len = hdrsLen },
+
+          { .iov_base = const_cast<char*>(userResp.first),
+            .iov_len = respLen }        // NULL/0 is OK
         };
 
         msghdr gather
         {
           .msg_name       = nullptr,
           .msg_namelen    = 0,
-          .msg_iov        = &iov,
+          .msg_iov        = iov,        // Ptr to 0th "iov" entry
           .msg_iovlen     = 2,
           .msg_control    = nullptr,
           .msg_controllen = 0,

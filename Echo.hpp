@@ -27,8 +27,10 @@ namespace Net
 		:	m_buff(new char[BuffSz])
 		{}
 
-		// Copy ctor is deleted -- not necessary:
-		Echo(Echo const&) = delete;
+		// Copy ctor: In this case, it is the same as the Default Ctor:
+		Echo(Echo const&)
+		:	m_buff(new char[BuffSz])
+		{}
 
 		// Dtor:
 		~Echo()
@@ -49,10 +51,10 @@ namespace Net
 			if (UNLIKELY(a_rem <= 0))
 				throw utxx::runtime_error("Buffer OverFlow");
 
-			char const* end = stpncpy(a_out, a_src, a_rem);
+			char*  end = stpncpy(a_out, a_src, a_rem);
 			assert(end != nullptr  && end <= a_out);
 
-			size_t      n   = size_t (end - a_out);
+			size_t n  = size_t (end - a_out);
 			assert(n <= a_rem);
 			if (UNLIKELY(n == a_rem))
 				throw utxx::runtime_error("Ouutput Truncated");
@@ -66,7 +68,7 @@ namespace Net
 		//=======================================================================//
 		// Call-Back: To be unvoked as "UserAction" from "HTTPProtoDialogue":    //
 		//=======================================================================//
-		std::pair<char const*, int> operator()
+		std::pair<char const*, size_t> operator()
 		(
 			char const* 															a_opname,
 			int																				a_nargs,
@@ -85,7 +87,7 @@ namespace Net
 			for (int i = 0;  i < a_nargs;  ++i)
 			{
 				auto const& argi = a_args[i];		 // NB: const& here to avoid copying!
-				char const* key  = argi.fisrt;
+				char const* key  = argi.first;
 				char const* val  = argi.second;
 
 				// Modern C++ also allows:
@@ -98,9 +100,10 @@ namespace Net
 				out = Put(out, val,     rem);
 				out = Put(out, "</p>",  rem);
 			}
-			out = Put("</body></html>", rem);
+			out = Put(out, "</body></html>", rem);
+			assert(out > m_buff);
 
-			return std::make_pair(m_buff, int(out - m_buff));  // To avoid strlen()
+			return std::make_pair(m_buff, size_t(out - m_buff)); // To avoid strlen()
 		}
 	};
 }

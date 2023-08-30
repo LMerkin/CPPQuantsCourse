@@ -1,6 +1,6 @@
 CXX = g++
 OPT      = -Ofast -march=native -mtune=native
-CXXFLAGS = -Wall  -std=c++20 -I./3rdParty
+CXXFLAGS = -Wall -Wextra -std=c++20 -I./3rdParty
 
 VPATH = __BUILD__
 
@@ -23,8 +23,11 @@ BSM.o: BSM.cpp BSM.h
 TCP_Acceptor.o: TCP_Acceptor.cpp TCP_Acceptor.h
 	$(CXX) $(OPT) $(CXXFLAGS) -c -o $(VPATH)/$@ TCP_Acceptor.cpp
 
-HTTPServer1:    HTTPServer1.cpp HTTPProtoDialogue.hpp Echo.hpp TCP_Acceptor.o
-	$(CXX) $(OPT) $(CXXFLAGS) -o $(VPATH)/$@ HTTPServer1.cpp $(VPATH)/TCP_Acceptor.o
+HTTPServer1:    HTTPServer1.cpp HTTPProtoDialogue.hpp Echo.hpp TCP_Acceptor.o error.o
+	$(CXX) $(OPT) $(CXXFLAGS) -o $(VPATH)/$@ HTTPServer1.cpp $(VPATH)/TCP_Acceptor.o $(VPATH)/error.o
+
+error.o: 3rdParty/utxx/error.cpp
+	$(CXX) $(OPT) $(CXXFLAGS) -c -o $(VPATH)/$@ $<
 
 clean:
 	rm -f $(VPATH)/*
