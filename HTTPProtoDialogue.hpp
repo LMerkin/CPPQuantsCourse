@@ -107,7 +107,13 @@ namespace Net
       //---------------------------------------------------------------------//
       bool   keepAlive  = true;
       size_t lastRecvSz = 0;
-      memset(m_recvBuff, '\0', m_recvBuffSz);    // For safety
+      int    N          = 0;   // Number of Key-Value pairs parsed
+
+      // For safety: Reset all temporary data:
+      memset(m_recvBuff, '\0', m_recvBuffSz);
+
+      for (int i = 0; i < m_maxKVs; ++i)
+        m_KVs[i] = {nullptr, nullptr};
 
       while (true)
       {
@@ -125,16 +131,24 @@ namespace Net
         // Clean the recv buffer for safety:
         memset(m_recvBuff, '\0', lastRecvSz);
 
+        // Also clean up all "m_KVs" from the prev invocation:
+        for (int i = 0; i < N; ++i)
+          m_KVs[i] = {nullptr, nullptr};
+
         // Keep-Alive will be false unless specified explicitly in the next req:
         keepAlive = false;
+
+        // Re-set the number of bytes and params before getting the next req:
+        lastRecvSz = 0;
+        N          = 0;
 
         //-------------------------------------------------------------------//
         // Receive 1 req from the client:                                    //
         //-------------------------------------------------------------------//
         int rc = recv(a_sd, m_recvBuff, m_recvBuffSz-1, 0); // Space for '\0'
-        if (rc < 0)
+        if (UNLIKELY(rc < 0))
         {
-          if (errno == EINTR)
+          if (UNLIKELY(errno == EINTR))
             continue;  // "recv" interrupted by a signal, try again!
 
           // Any other error: exit the dialogue:
@@ -168,8 +182,11 @@ namespace Net
         // complex:
         // Full req must have "\r\n\r\n" at the end:
         //
-        if (lastRecvSz < 4 ||
-            strcmp(m_recvBuff + (lastRecvSz - 4), "\r\n\r\n") != 0)
+        constexpr char GetStr[] = "GET ";
+        if (UNLIKELY
+           (lastRecvSz < sizeof(GetStr)-1  ||
+            strcmp(m_recvBuff + (lastRecvSz - sizeof(GetStr) + 1), "\r\n\r\n")
+            != 0))
         {
           m_logger->error("SD={}: Incomplete Req, disconnecting", a_sd);
           (void) close(a_sd);
@@ -178,7 +195,7 @@ namespace Net
  
         // OK, got a possibly complete req:
         // Parse the 1st line. The method must be GET, others not supported:
-        if (strncmp(m_recvBuff, "GET ", 4) != 0)
+        if (UNLIKELY(strncmp(m_recvBuff, GetStr, sizeof(GetStr)-1) != 0))
         {
           m_logger->info("SD={}: Unsupported Method: %s\n", a_sd, m_recvBuff);
           // Send the 501 error to the client:
@@ -196,10 +213,10 @@ namespace Net
         // Start with (m_recvBuff+4), ie skip "GET " which we checked is there:
         // XXX: Extra spaces between "GET" and Path are not allowed, as well
         //      as extra spaces at the end of the Path:
-        char* path    = strchr(m_recvBuff + 4,  '/');
+        char* path    = strchr(m_recvBuff + sizeof(GetStr) - 1,    '/');
         char* pathEnd = (path == nullptr) ? nullptr : strchr(path, ' ');
 
-        if (pathEnd == nullptr)
+        if (UNLIKELY(pathEnd == nullptr))
         {
           // This is not a correct req -- path not found:
           m_logger->info("SD={}: Missing Path in\n{}\n", a_sd, m_recvBuff);
@@ -214,10 +231,10 @@ namespace Net
 
         // Check the HTTP version  (end of 1st req line, beyond pathEnd):
         // It needs to be HTTP/1.1 (other versions not supported here):
-        char const* HTTP11 = "HTTP/1.1";
+        constexpr char HTTP11Str[] = "HTTP/1.1";
 
-        char const* httpVer =  strstr(pathEnd + 1, HTTP11);
-        if (httpVer == nullptr)
+        char const* httpVer =  strstr(pathEnd + 1, HTTP11Str);
+        if (UNLIKELY(httpVer == nullptr))
         {
           m_logger->info("SD={}: Invalid HTTPVer in\n{}\n", a_sd, m_recvBuff);
           // Send the 501 error to the client:
@@ -235,26 +252,30 @@ namespace Net
         // Now parse the Headers. XXX: We are currently only interested in the
         // "Connection: " header, so search for it directly -- all others are
         // ignored:
-        char const* nextLine = httpVer + strlen(HTTP11) + 2;
-        char const* ConnKey  = "Connection: ";
-        char const* connHdr  = strstr(nextLine, ConnKey);
+        char const*    nextLine     = httpVer + sizeof(HTTP11Str) + 1;
+        constexpr char ConnKeyStr[] = "Connection: ";
+        char const*    connHdr      = strstr(nextLine, ConnKeyStr);
         // XXX: Or use "strcasestr" for case-insensitive search?
 
-        if (connHdr != nullptr)
+        if (LIKELY(connHdr != nullptr))
         {
-          char const* connHdrVal = connHdr + strlen(ConnKey);
+          char const* connHdrVal = connHdr + sizeof(ConnKeyStr) - 1;
           // XXX: Assume there are no extra spaces between the HdrKey and the
           // HdrVal:
-          if (strncasecmp(connHdrVal, "Keep-Alive", 11) == 0)
+          constexpr char KeepAliveStr[] = "Keep-Alive";
+          constexpr char CloseStr    [] = "Close";
+          if (strncasecmp(connHdrVal, KeepAliveStr, sizeof(KeepAliveStr)-1)
+              == 0)
             keepAlive = true;
           else
-          if (strncasecmp(connHdrVal, "Close", 5) != 0)
+          if (UNLIKELY(strncasecmp(connHdrVal, CloseStr, sizeof(CloseStr)-1)
+              != 0))
           {
             assert(!keepAlive);
             connHdr = nullptr;  // INVALID; keepAlive remains false
           }
         }
-        if (connHdr == nullptr)
+        if (UNLIKELY(connHdr == nullptr))
         {
           m_logger->info("SD={}: Missing/Invalid \"Connecton: \" Header", a_sd);
           // Send the 501 error to the client:
@@ -274,9 +295,8 @@ namespace Net
         char const* optName = path + 1;
 
         // Find the end of "optName";
-        int N = 0;
         char* optNameEnd = const_cast<char*>(strchr(optName, '?'));
-        if (optNameEnd != nullptr)
+        if (LIKELY(optNameEnd != nullptr))
         {
           assert(optNameEnd < pathEnd);
           // 0-terminate the optName:
@@ -284,11 +304,13 @@ namespace Net
 
           char const* key     = optNameEnd + 1;
           bool        invalid = false;
+          assert(N == 0);
 
-          for (; N < m_maxKVs && key < pathEnd; ++N)
+          while (N < m_maxKVs && key < pathEnd)
           {
-            char const* eq = strchr(key, '=');
-            if (eq == nullptr || eq == key+1 || eq == pathEnd-1)
+            // 0-terminate the Key:
+            char* eq = const_cast<char*>(strchr(key, '='));
+            if (UNLIKELY(eq == nullptr || eq == key+1 || eq == pathEnd-1))
             {
               constexpr char errMsg[] =
                 "HTTP/1.1 501 Incorrect Key=Val params\r\n\r\n";
@@ -297,25 +319,29 @@ namespace Net
               invalid = true;
               break;
             }
+            *eq = '\0';
             char const* val = eq + 1;
 
             // Find the next key and 0-terminate the val. If not found, we are
             // at the end of Path:
             char* amp = const_cast<char*>(strchr(val, '&'));
-            if (amp != nullptr)
+            if (LIKELY(amp != nullptr))
               *amp = '\0';
  
             // Store the (key,val) ptrs:
+            assert(key != nullptr  && val != nullptr);
             m_KVs[N] = std::make_pair(key, val);
+            ++N;
 
             // Continue or done?
-            if (amp == nullptr)
+            if (UNLIKELY(amp == nullptr))
               break;
             key = amp + 1;
           }
-          if (invalid)
+          if (UNLIKELY(invalid))
             continue;
         }
+        // Now N >= 0 is the number of params parsed
 
         //-------------------------------------------------------------------//
         // Invoke the UserAction:                                            //
@@ -341,7 +367,7 @@ namespace Net
         size_t respLen = userResp.second;
 
         // Handle errors first:
-        if (respLen == 0 || userResp.first == nullptr)
+        if (UNLIKELY(respLen == 0 || userResp.first == nullptr))
         {
           constexpr char errMsg[] = "HTTP/1.1 401 No Result\r\n\r\n";
           (void) send  (a_sd, errMsg, sizeof(errMsg)-1, 0);
@@ -395,7 +421,7 @@ namespace Net
         // rc == 0: client SWAMPED by our data;
         // XXX:  in both cases, disconnect; EINTR is extremely unlikely here:
         //
-        if (rc <= 0)
+        if (UNLIKELY(rc <= 0))
         {
           m_logger->error("SD={}: sendmsg failed: errno={}: {}",
                           a_sd, errno, strerror(errno));

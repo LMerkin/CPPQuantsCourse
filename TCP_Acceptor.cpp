@@ -22,6 +22,7 @@
 #include <csignal>
 #include <sys/wait.h>
 #include <utxx/error.hpp>   // Using utxx for more convenient exceptions
+#include <utxx/compiler_hints.hpp>
 
 namespace Net
 {
@@ -41,9 +42,13 @@ namespace Net
   {
     assert(m_logger != nullptr);
 
+    if (UNLIKELY(a_port < 0 || a_port > 65535))
+      throw utxx::badarg_error
+            ("ERROR: TCP_Acceptor::Ctor: Invalid Port={}", a_port);
+
     // Create the acceptor socket (NOT for data interchange!)
     int sd = socket(AF_INET, SOCK_STREAM, 0);  // Default protocol: TCP
-    if (sd < 0)
+    if (UNLIKELY(sd < 0))
       // NB: Variable-arg ctor -- using a variadic template:
       throw utxx::runtime_error
             ("ERROR: Cannot create acceptor socket: errno=", errno, ": ",
@@ -59,7 +64,7 @@ namespace Net
     sa.sin_port        = htons(uint16_t(a_port));
 
     int rc = bind(sd, (sockaddr const*)(&sa), sizeof(sa));
-    if (rc < 0)
+    if (UNLIKELY(rc < 0))
     {
       int e =    errno;
       (void) close(sd);
@@ -78,10 +83,11 @@ namespace Net
     // SIGCHILD                 -- will "wait" for the child terminated to avoid
     //                             a zombie
     // FIXME: Better use "sigaction":
-    if (signal(SIGINT,  SigHandler) == SIG_ERR ||
+    if (UNLIKELY
+       (signal(SIGINT,  SigHandler) == SIG_ERR ||
         signal(SIGQUIT, SigHandler) == SIG_ERR ||
         signal(SIGTERM, SigHandler) == SIG_ERR ||
-        signal(SIGCHLD, SigHandler) == SIG_ERR)
+        signal(SIGCHLD, SigHandler) == SIG_ERR))
     {
       (void) close(m_acceptorSD);
       throw utxx::runtime_error("ERROR: Cannot setup signal handlers");
@@ -91,8 +97,6 @@ namespace Net
   //=========================================================================//
   // "TCP_Acceptor": Non-Default Ctor using "argc", "argv":                  //
   //=========================================================================//
-  // XXX: NOT THREAD-SAFE: Using "getopt":
-  //
   TCP_Acceptor::TCP_Acceptor(int argc, char* argv[], spdlog::logger* a_logger)
   : m_acceptorSD(-1),
     m_cmodel    (EConcurModel::Sequential),
@@ -100,6 +104,11 @@ namespace Net
   {
     assert(m_logger != nullptr);
 
+    // Parse the command-line params. XXX: Using "getopt" is NOT thread-safe.
+    // Reset "optind" to 1 so the "getopt" loop may be invoked multiple times
+    // from different places in the program:
+    optind = 1;
+    opterr = 0;  // To avoid error msgs on unrecognised options
     char const*  acceptorIP = nullptr;
     int          port       = -1;
     EConcurModel cmodel     = EConcurModel::Sequential;
@@ -107,7 +116,7 @@ namespace Net
     while (true)
     {
       int opt = getopt(argc, argv, "c:i:p:");
-      if (opt < 0)
+      if (UNLIKELY(opt < 0))
         break;
 
       switch (opt)
@@ -126,12 +135,22 @@ namespace Net
         break;
 
       default:
-        // Ignore the unused arg:
+        // Ignore unrecognised args -- they may be used by other components:
         ;
       }
     }
-    // Invoke the actual Ctor:
-    TCP_Acceptor(port, a_logger, acceptorIP, cmodel);
+    if (UNLIKELY(port < 0))
+      throw utxx::badarg_error
+            ("TCP_Acceptor::Ctor: Missing Local Port.\nUSAGE:\n"
+             "\t[-i LOCAL_IP_AADR]\n"
+             "\t -p LOCAL_PORT\n"
+             "\t[-c {Sequential|Fork|Thread|ThreadPool}]");
+
+    // Invoke the actual Ctor: XXX: This is a DIRTY HACK, using "placement new".
+    // Otherwise, delegated ctor invocation is only possible inside the initial-
+    // isation list, not in the Ctor body:
+    //
+    new (this) TCP_Acceptor(port, a_logger, acceptorIP, cmodel);
   }
 
   //=========================================================================//

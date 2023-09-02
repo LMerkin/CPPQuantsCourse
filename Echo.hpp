@@ -52,7 +52,7 @@ namespace Net
 				throw utxx::runtime_error("Buffer OverFlow");
 
 			char*  end = stpncpy(a_out, a_src, a_rem);
-			assert(end != nullptr  && end <= a_out);
+			assert(end != nullptr);
 
 			size_t n  = size_t (end - a_out);
 			assert(n <= a_rem);

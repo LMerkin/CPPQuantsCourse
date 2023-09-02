@@ -6,6 +6,8 @@
 #include "TCP_Acceptor.hpp"
 #include "HTTPProtoDialogue.hpp"
 #include "Echo.hpp"
+#include "Logger.hpp"
+#include <stdexcept>
 
 // For logging:
 #define  SPDLOG_USE_STD_FORMAT
@@ -18,39 +20,40 @@
 //===========================================================================//
 int main(int argc, char* argv[])
 {
-  //-------------------------------------------------------------------------//
-  // Create the Logger: MaxQueue=1024, 1 Thread, Thread-Safe:                //
-  //-------------------------------------------------------------------------//
-  char const* logFileName = "HTTPServer1";
+  try
+  {
+    //-----------------------------------------------------------------------//
+    // Create the Logger:                                                    //
+    //-----------------------------------------------------------------------//
+    std::shared_ptr<spdlog::logger> loggerShP = Net::MkLogger(argc, argv);
+    spdlog::logger*                 logger    = loggerShP.get();
+    assert(logger != nullptr);
 
-  // TODO: Get non-default "logFileName" from argc/argv using "getopts"
+    //-----------------------------------------------------------------------//
+    // Instantiate the TCP Acceptor:                                         //
+    //-----------------------------------------------------------------------//
+    Net::TCP_Acceptor acc(argc, argv, logger);
 
-  spdlog::init_thread_pool(1024, 1);
-  std::shared_ptr<spdlog::logger> loggerShP =
-    spdlog::rotating_logger_mt<spdlog::async_factory_nonblock>
-    (
-      "HTTPServer1",      // LoggerName
-      logFileName,
-      1024 * 1024,        // LogFileSize=1M
-      100                 // 100 log file rotations
-    );
-  spdlog::logger* logger = loggerShP.get();
+    // Instantiate the HTTPProtoDialohue with UserAction = Echo:
+    Net::Echo echo;
+    Net::HTTPProtoDialogue<Net::Echo> http(echo, logger);
 
-  assert(logger != nullptr);
-  logger->set_pattern("%+", spdlog::pattern_time_type::utc);
-
-  //-------------------------------------------------------------------------//
-  // Instantiate the TCP Acceptor:                                           //
-  //-------------------------------------------------------------------------//
-  Net::TCP_Acceptor acc(argc, argv, logger);
-
-  // Instantiate the HTTPProtoDialohue with UserAction = Echo:
-  Net::Echo echo;
-  Net::HTTPProtoDialogue<Net::Echo> http(echo, logger);
-
-  //-------------------------------------------------------------------------//
-  // Run it!                                                                 //
-  //-------------------------------------------------------------------------//
-  acc.Run(http);
-  return 0;
+    //-----------------------------------------------------------------------//
+    // Run it!                                                               //
+    //-----------------------------------------------------------------------//
+    acc.Run(http);
+    return 0;
+  }
+  catch (std::exception const& exn)
+  {
+    std::cerr << "EXCEPTION: " << exn.what() << std::endl;
+    return 1;
+  }
+  catch (...)
+  {
+    std::cerr << "UNKNOWN EXCEPTION" << std::endl;
+    return 1;
+  }
+  // We will never get here:
+  __builtin_unreachable();
 }

@@ -12,6 +12,7 @@
 #include <sys/wait.h>
 #include <stdexcept>
 #include <utxx/error.hpp>
+#include <utxx/compiler_hints.hpp>
 #define  SPDLOG_USE_STD_FORMAT
 #include <spdlog/spdlog.h>
 
@@ -29,10 +30,10 @@ namespace Net
       // Accept a connection, create a data exchange socket:                 //
       //---------------------------------------------------------------------//
       int sd1 = accept(m_acceptorSD, nullptr, nullptr);
-      if (sd1 < 0)
+      if (UNLIKELY(sd1 < 0))
       {
         // Some error in "accept", but may be not really serious:
-        if (errno == EINTR)
+        if (UNLIKELY(errno == EINTR))
           // "accept" was interrupted by a signal, this is OK, just continue:
           continue;
 
